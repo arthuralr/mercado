@@ -34,13 +34,20 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import type { CatalogProduct } from '@/lib/catalog-types';
-import type { AdminFlyer, AdminOffer } from '../admin-data-provider';
+import { useAdminData, type AdminFlyer, type AdminOffer } from '../admin-data-provider';
 import { currentStoreDate } from '@/lib/site-settings';
+import {
+  getFlyerMimeType,
+  isPdfFlyer,
+  isSupportedFlyerFile,
+  MAX_FLYER_FILE_SIZE,
+} from '@/lib/flyer-file';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import {
   fetchAdminOffers,
   fetchAdminProducts,
-  fetchFlyer,
+  fetchFlyers,
+  deleteFlyer,
   fetchTodayOrderCount,
   fetchTodayMetrics,
   importProductPrices,
@@ -133,8 +140,11 @@ export default function AdminDashboard({
   products: CatalogProduct[];
 }) {
   const router = useRouter();
+  const { selectFlyer, updateFlyers } = useAdminData();
   const [products, setProducts] = useState(initialProducts);
   const [offers, setOffers] = useState<AdminOffer[]>([]);
+  const [offersLoaded, setOffersLoaded] = useState(false);
+  const [flyers, setFlyers] = useState<AdminFlyer[]>([]);
   const [flyer, setFlyer] = useState<AdminFlyer | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
@@ -198,26 +208,64 @@ export default function AdminDashboard({
   useEffect(() => {
     if (!authenticated) return;
     let active = true;
-    void Promise.all([
+    void Promise.allSettled([
       fetchAdminProducts(),
       fetchAdminOffers(),
       fetchTodayOrderCount(),
       fetchTodayMetrics(),
-      fetchFlyer(),
+      fetchFlyers(),
     ])
-      .then(([loadedProducts, loadedOffers, todayOrders, todayMetrics, loadedFlyer]) => {
+      .then(([productsResult, offersResult, ordersResult, metricsResult, flyerResult]) => {
         if (!active) return;
-        setProducts(loadedProducts);
-        setOffers(loadedOffers);
-        setOrderCount(todayOrders);
-        setTodayVisits(todayMetrics.visits);
-        setTodayFlyerViews(todayMetrics.flyerViews);
-        setFlyer(loadedFlyer);
-      })
-      .catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : 'Erro desconhecido ao carregar o painel.';
-        setActionError(message);
+        const errors: string[] = [];
+        if (productsResult.status === 'fulfilled') {
+          setProducts(productsResult.value);
+        } else {
+          errors.push(
+            productsResult.reason instanceof Error
+              ? productsResult.reason.message
+              : 'Não foi possível carregar os produtos.',
+          );
+        }
+        if (offersResult.status === 'fulfilled') {
+          setOffers(offersResult.value);
+          setOffersLoaded(true);
+        } else {
+          errors.push(
+            offersResult.reason instanceof Error
+              ? offersResult.reason.message
+              : 'Não foi possível carregar as ofertas.',
+          );
+        }
+        if (ordersResult.status === 'fulfilled') {
+          setOrderCount(ordersResult.value);
+        } else {
+          errors.push(
+            ordersResult.reason instanceof Error
+              ? ordersResult.reason.message
+              : 'Não foi possível carregar os pedidos de hoje.',
+          );
+        }
+        if (metricsResult.status === 'fulfilled') {
+          setTodayVisits(metricsResult.value.visits);
+          setTodayFlyerViews(metricsResult.value.flyerViews);
+        } else {
+          errors.push(
+            metricsResult.reason instanceof Error
+              ? metricsResult.reason.message
+              : 'Não foi possível carregar as métricas de visitas.',
+          );
+        }
+        if (flyerResult.status === 'fulfilled') {
+          setFlyers(flyerResult.value);
+        } else {
+          errors.push(
+            flyerResult.reason instanceof Error
+              ? flyerResult.reason.message
+              : 'Não foi possível carregar o encarte.',
+          );
+        }
+        setActionError(errors.join(' '));
       })
       .finally(() => {
         if (active) setLoadingData(false);
@@ -404,21 +452,39 @@ export default function AdminDashboard({
       setFlyerMessage('Escolha um arquivo de imagem ou PDF para continuar.');
       return;
     }
+    if (flyerFile && !isSupportedFlyerFile(flyerFile)) {
+      setFlyerMessage('Formato não suportado. Escolha um arquivo PDF, JPG, PNG ou WebP.');
+      return;
+    }
+    if (flyerFile && flyerFile.size > MAX_FLYER_FILE_SIZE) {
+      setFlyerMessage('O arquivo precisa ter no máximo 10 MB.');
+      return;
+    }
     if (!flyerTitle.trim() || !flyerValidUntil) {
       setFlyerMessage('Informe o título e a data de validade do encarte.');
       return;
     }
     const file = flyerFile;
     const current: AdminFlyer = {
+      id: flyer?.id ?? '',
       title: flyerTitle.trim(),
       validUntil: flyerValidUntil,
       fileName: file?.name ?? flyer?.fileName ?? '',
-      fileType: file?.type ?? flyer?.fileType ?? '',
+      fileType: file ? getFlyerMimeType(file.name) : flyer?.fileType ?? '',
       fileSize: file?.size ?? flyer?.fileSize ?? 0,
+      fileUrl: flyer?.fileUrl,
     };
     void persistFlyer(current, file ?? undefined)
       .then((savedFlyer) => {
         setFlyer(savedFlyer);
+        const nextFlyers = [
+          savedFlyer,
+          ...flyers.filter((item) => item.id !== savedFlyer.id),
+        ];
+        setFlyers(nextFlyers);
+        updateFlyers(nextFlyers);
+        selectFlyer(savedFlyer.id);
+        window.dispatchEvent(new Event('flyers-changed'));
         setFlyerMessage('Encarte enviado e publicado no Supabase.');
         setFlyerFile(null);
         router.refresh();
@@ -428,6 +494,41 @@ export default function AdminDashboard({
           error instanceof Error ? error.message : 'Não foi possível salvar o encarte.',
         );
       });
+  }
+
+  function startNewFlyer() {
+    setFlyer(null);
+    setFlyerTitle('');
+    setFlyerValidUntil('');
+    setFlyerFile(null);
+    setFlyerPreview('');
+    setFlyerMessage('');
+  }
+
+  async function removeFlyer(flyerToRemove: AdminFlyer) {
+    if (!window.confirm(`Excluir o encarte "${flyerToRemove.title}"?`)) return;
+    try {
+      await deleteFlyer(flyerToRemove.id);
+      const nextFlyers = flyers.filter((item) => item.id !== flyerToRemove.id);
+      setFlyers(nextFlyers);
+      updateFlyers(nextFlyers);
+      window.dispatchEvent(new Event('flyers-changed'));
+      if (flyer?.id === flyerToRemove.id) startNewFlyer();
+      setFlyerMessage('Encarte excluído.');
+    } catch (error) {
+      setFlyerMessage(
+        error instanceof Error ? error.message : 'Não foi possível excluir o encarte.',
+      );
+    }
+  }
+
+  function editFlyer(flyerToEdit: AdminFlyer) {
+    setFlyer(flyerToEdit);
+    setFlyerTitle(flyerToEdit.title);
+    setFlyerValidUntil(flyerToEdit.validUntil);
+    setFlyerFile(null);
+    setFlyerPreview(flyerToEdit.fileUrl ?? '');
+    setFlyerMessage('');
   }
 
   if (!authChecked) {
@@ -531,7 +632,7 @@ export default function AdminDashboard({
             <div className="space-y-6">
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Metric icon={CircleDollarSign} label="Pedidos hoje" value={orderCount === null ? '—' : String(orderCount)} trend="Consulta em pedidos" color="emerald" />
-                <Metric icon={BadgePercent} label="Ofertas ativas" value={String(activeOffersCount)} trend="Consulta em ofertas_relampago" color="orange" />
+                <Metric icon={BadgePercent} label="Ofertas ativas" value={offersLoaded ? String(activeOffersCount) : '—'} trend="Consulta em ofertas_relampago" color="orange" />
                 <Metric icon={Eye} label="Visualizações do encarte hoje" value={todayFlyerViews === null ? '—' : String(todayFlyerViews)} trend="Visitantes únicos/dia" color="blue" />
                 <Metric icon={Users} label="Visitas ao site hoje" value={todayVisits === null ? '—' : String(todayVisits)} trend="Visitantes únicos/dia" color="purple" />
               </div>
@@ -549,7 +650,7 @@ export default function AdminDashboard({
                 </div>
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 sm:p-6">
                   <div className="mb-3 flex items-center gap-2 text-amber-900"><ShieldCheck size={20} /><h2 className="m-0 text-base font-black">Métricas disponíveis</h2></div>
-                  <p className="m-0 text-sm leading-6 text-amber-900/80">Pedidos e ofertas vêm do banco. Visualizações e acessos aparecem como “—” até uma solução de analytics ser conectada.</p>
+                  <p className="m-0 text-sm leading-6 text-amber-900/80">Pedidos e ofertas são consultados no PostgreSQL. Visitas e visualizações do encarte contam visitantes únicos por dia na tabela metricas_visita, no fuso de São Paulo.</p>
                 </div>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
@@ -560,7 +661,7 @@ export default function AdminDashboard({
                     if (!product) return null;
                     return <div key={offer.id} className="flex items-center justify-between gap-3 py-3"><span className="min-w-0 truncate text-sm font-semibold">{product.name}</span><span className="shrink-0 text-sm font-black text-emerald-800">{currency.format(offer.promoPrice)}</span></div>;
                   })}
-                  {!activeOffersCount && <p className="py-4 text-sm text-slate-500">Nenhuma oferta ativa no momento.</p>}
+                  {offersLoaded && !activeOffersCount && <p className="py-4 text-sm text-slate-500">Nenhuma oferta ativa no momento.</p>}
                 </div>
               </div>
             </div>
@@ -573,7 +674,7 @@ export default function AdminDashboard({
           {section === 'offers' && (
             <div className="space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                <p className="m-0 text-sm text-emerald-950"><strong>{activeOffersCount}</strong> oferta(s) com validade vigente.</p>
+                <p className="m-0 text-sm text-emerald-950"><strong>{offersLoaded ? activeOffersCount : '—'}</strong> oferta(s) com validade vigente.</p>
                 <button type="button" onClick={() => beginOffer()} className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"><Plus size={17} /> Nova oferta</button>
               </div>
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -592,7 +693,7 @@ export default function AdminDashboard({
                     </div>
                   </div>;
                 })}
-                {!offers.length && <p className="p-8 text-center text-sm text-slate-500">Nenhuma oferta cadastrada. Crie a primeira promoção.</p>}
+                {offersLoaded && !offers.length && <p className="p-8 text-center text-sm text-slate-500">Nenhuma oferta cadastrada. Crie a primeira promoção.</p>}
               </div>
             </div>
           )}
@@ -651,21 +752,55 @@ export default function AdminDashboard({
           )}
 
           {section === 'flyer' && (
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
+            <div className="space-y-5">
+              <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <div className="border-b border-slate-100 px-5 py-4">
+                  <h2 className="m-0 text-lg font-black">Encartes cadastrados</h2>
+                  <p className="mb-0 mt-1 text-sm text-slate-500">Edite os dados ou exclua encartes antigos.</p>
+                </div>
+                {flyers.length ? (
+                  <ul className="m-0 divide-y divide-slate-100 p-0">
+                    {flyers.map((item) => (
+                      <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                        <div className="min-w-0">
+                          <strong className="block truncate text-sm text-slate-900">{item.title}</strong>
+                          <span className="block truncate text-xs text-slate-500">{item.fileName}</span>
+                          <span className="mt-1 block text-xs text-slate-500">
+                            Válido até {new Date(`${item.validUntil}T12:00:00`).toLocaleDateString('pt-BR')}
+                            {item.validUntil < currentStoreDate() && <span className="ml-2 font-bold text-rose-700">Expirado</span>}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => editFlyer(item)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                            <Pencil size={14} />Editar
+                          </button>
+                          <button type="button" onClick={() => void removeFlyer(item)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50">
+                            <Trash2 size={14} />Excluir
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="m-0 px-5 py-6 text-sm text-slate-500">Nenhum encarte cadastrado.</p>
+                )}
+              </section>
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
               <form onSubmit={saveFlyerMetadata} className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                <div><h2 className="m-0 text-lg font-black">Encarte da semana</h2><p className="mb-0 mt-1 text-sm text-slate-500">Cadastre a arte e informe até quando ela é válida.</p></div>
+                <div className="flex items-start justify-between gap-3"><div><h2 className="m-0 text-lg font-black">{flyer ? 'Editar encarte' : 'Novo encarte'}</h2><p className="mb-0 mt-1 text-sm text-slate-500">Cadastre a arte e informe até quando ela é válida.</p></div><button type="button" onClick={startNewFlyer} className="shrink-0 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-800">Novo encarte</button></div>
                 <label className="block text-sm font-semibold">Título do encarte<input required value={flyerTitle} onChange={(event) => setFlyerTitle(event.target.value)} placeholder="Ex.: Ofertas da semana" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 outline-none focus:border-emerald-700" /></label>
                 <label className="block text-sm font-semibold">Válido até<input required type="date" value={flyerValidUntil} onChange={(event) => setFlyerValidUntil(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 outline-none focus:border-emerald-700" /></label>
-                <input ref={flyerInput} type="file" accept="image/*,application/pdf" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; setFlyerMessage(''); if (file && !file.type.startsWith('image/') && file.type !== 'application/pdf') { setFlyerMessage('Formato não suportado. Escolha uma imagem ou PDF.'); return; } if (file && file.size > 10 * 1024 * 1024) { setFlyerMessage('O arquivo precisa ter no máximo 10 MB para a pré-visualização.'); return; } if (flyerPreview) URL.revokeObjectURL(flyerPreview); setFlyerFile(file); setFlyerPreview(file ? URL.createObjectURL(file) : ''); }} />
-                <button type="button" onClick={() => flyerInput.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/60 px-4 py-8 text-center hover:bg-emerald-50"><Upload size={24} className="text-emerald-800" /><span className="font-bold text-emerald-950">{flyerFile?.name ?? flyer?.fileName ?? 'Selecionar imagem ou PDF'}</span><span className="text-xs text-slate-500">PNG, JPG ou PDF · até 10 MB</span></button>
+                <input ref={flyerInput} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; event.target.value = ''; setFlyerMessage(''); if (file && !isSupportedFlyerFile(file)) { setFlyerMessage('Formato não suportado. Escolha um arquivo PDF, JPG, PNG ou WebP.'); return; } if (file && file.size > MAX_FLYER_FILE_SIZE) { setFlyerMessage('O arquivo precisa ter no máximo 10 MB.'); return; } if (flyerPreview) URL.revokeObjectURL(flyerPreview); setFlyerFile(file); setFlyerPreview(file ? URL.createObjectURL(file) : ''); }} />
+                <button type="button" onClick={() => flyerInput.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/60 px-4 py-8 text-center hover:bg-emerald-50"><Upload size={24} className="text-emerald-800" /><span className="font-bold text-emerald-950">{flyerFile?.name ?? flyer?.fileName ?? 'Selecionar imagem ou PDF'}</span><span className="text-xs text-slate-500">JPG, PNG, WebP ou PDF · até 10 MB</span></button>
                 {flyerMessage && <p role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">{flyerMessage}</p>}
                 <button type="submit" className="w-full rounded-xl bg-emerald-800 py-3 font-bold text-white hover:bg-emerald-700"><Check size={17} className="mr-2 inline" />Salvar informações do encarte</button>
                 <p className="m-0 text-xs leading-5 text-slate-500">O arquivo e os metadados são publicados no Supabase Storage e PostgreSQL para todas as pessoas que acessarem a loja.</p>
               </form>
               <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
                 <h2 className="mb-4 mt-0 text-lg font-black">Pré-visualização</h2>
-                {flyerPreview && flyerFile?.type.startsWith('image/') ? <Image src={flyerPreview} alt="Prévia do encarte selecionado" width={800} height={1000} unoptimized className="max-h-[520px] w-full rounded-xl object-contain" /> : flyerPreview && (flyerFile?.type === 'application/pdf' || flyer?.fileUrl?.toLowerCase().includes('.pdf')) ? <iframe src={flyerPreview} title="Prévia do PDF do encarte" className="h-[520px] w-full rounded-xl border border-slate-200" /> : flyer ? <div className="rounded-xl bg-slate-50 p-5">{flyer.fileUrl && <Image src={flyer.fileUrl} alt="Encarte publicado" width={800} height={1000} unoptimized className="mb-4 max-h-[360px] w-full rounded-xl object-contain" />}<p className="mb-1 mt-0 font-bold">{flyer.title}</p><p className="mb-0 mt-0 text-sm text-slate-500">{flyer.fileName}</p><p className="mb-0 mt-2 flex items-center gap-2 text-xs text-slate-500"><CalendarDays size={14} /> Válido até {new Date(`${flyer.validUntil}T12:00:00`).toLocaleDateString('pt-BR')}</p></div> : <div className="grid min-h-64 place-items-center rounded-xl border border-dashed border-slate-200 text-center text-sm text-slate-400"><div><FileUp size={30} className="mx-auto mb-2" />Selecione uma arte para pré-visualizar</div></div>}
+                {flyerPreview && isPdfFlyer(flyerFile?.name ?? flyer?.fileName ?? '', flyerFile?.type ?? flyer?.fileType) ? <iframe src={flyerPreview} title="Prévia do PDF do encarte" className="h-[520px] w-full rounded-xl border border-slate-200" /> : flyerPreview && (flyerFile ? isSupportedFlyerFile(flyerFile) : Boolean(flyer?.fileType.startsWith('image/'))) ? <Image src={flyerPreview} alt="Prévia do encarte selecionado" width={800} height={1000} unoptimized className="max-h-[520px] w-full rounded-xl object-contain" /> : flyer ? <div className="rounded-xl bg-slate-50 p-5"><p className="mb-1 mt-0 font-bold">{flyer.title}</p><p className="mb-0 mt-0 text-sm text-slate-500">{flyer.fileName}</p><p className="mb-0 mt-2 flex items-center gap-2 text-xs text-slate-500"><CalendarDays size={14} /> Válido até {new Date(`${flyer.validUntil}T12:00:00`).toLocaleDateString('pt-BR')}</p></div> : <div className="grid min-h-64 place-items-center rounded-xl border border-dashed border-slate-200 text-center text-sm text-slate-400"><div><FileUp size={30} className="mx-auto mb-2" />Selecione uma arte para pré-visualizar</div></div>}
               </section>
+              </div>
             </div>
           )}
         </section>

@@ -1,5 +1,14 @@
 export const SITE_SETTINGS_TABLE = 'configuracoes_site';
 
+export interface HeroCampaignCopy {
+  id: string;
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  button: string;
+  image: string;
+}
+
 export interface SiteSettings {
   brand: {
     logoUrl: string;
@@ -58,6 +67,7 @@ export interface SiteSettings {
     mainImage: string;
     mainTitle: string;
     mainSubtitle: string;
+    campaigns: HeroCampaignCopy[];
     secondaryImage: string;
     tertiaryImage: string;
   };
@@ -128,6 +138,37 @@ export const defaultSiteSettings: SiteSettings = {
     mainImage: '',
     mainTitle: 'A semana mais fresca do ano.',
     mainSubtitle: 'Hortifrúti selecionado com preços especiais.',
+    campaigns: [
+      {
+        id: 'hortifruti',
+        eyebrow: 'É tempo de coisa boa',
+        title: 'A semana mais fresca do ano.',
+        subtitle: 'Hortifrúti selecionado com preços especiais.',
+        button: 'Explorar a feirinha',
+        image:
+          'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1800&q=90',
+      },
+      {
+        id: 'carnes',
+        eyebrow: 'Seu churrasco merece',
+        title: 'O melhor do fim de semana começa aqui.',
+        subtitle:
+          'Cortes especiais, acompanhamentos fresquinhos e tudo para reunir quem você gosta.',
+        button: 'Ver ofertas de carnes',
+        image:
+          'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1800&q=90',
+      },
+      {
+        id: 'praticidade',
+        eyebrow: 'Praticidade todo dia',
+        title: 'Sua despensa cheia. Seu tempo livre também.',
+        subtitle:
+          'Receba em casa os favoritos da família com entrega rápida e cuidado de verdade.',
+        button: 'Fazer minhas compras',
+        image:
+          'https://images.unsplash.com/photo-1543168256-418811576931?auto=format&fit=crop&w=1800&q=90',
+      },
+    ],
     secondaryImage: '',
     tertiaryImage: '',
   },
@@ -139,6 +180,55 @@ export function mergeSiteSettings(value: unknown): SiteSettings {
   }
 
   const input = value as Partial<SiteSettings>;
+  const inputCampaigns = input.banners?.campaigns;
+  const campaigns = Array.isArray(inputCampaigns) && inputCampaigns.length > 0
+    ? inputCampaigns.map((campaign, index) => {
+        if (!campaign || typeof campaign !== 'object' || Array.isArray(campaign)) {
+          return defaultSiteSettings.banners.campaigns[index] ??
+            defaultSiteSettings.banners.campaigns[0];
+        }
+        const fallback =
+          defaultSiteSettings.banners.campaigns[index] ??
+          defaultSiteSettings.banners.campaigns[0];
+        return {
+          id: typeof campaign.id === 'string' && campaign.id ? campaign.id : `campaign-${index + 1}`,
+          eyebrow:
+            typeof campaign.eyebrow === 'string' ? campaign.eyebrow : fallback.eyebrow,
+          title: typeof campaign.title === 'string' ? campaign.title : fallback.title,
+          subtitle:
+            typeof campaign.subtitle === 'string'
+              ? campaign.subtitle
+              : fallback.subtitle,
+          button: typeof campaign.button === 'string' ? campaign.button : fallback.button,
+          image:
+            typeof campaign.image === 'string' && campaign.image
+              ? campaign.image
+              : index === 0 && typeof input.banners?.mainImage === 'string' && input.banners.mainImage
+                ? input.banners.mainImage
+                : fallback.image,
+        };
+      })
+    : [
+        {
+          ...defaultSiteSettings.banners.campaigns[0],
+          image:
+            typeof input.banners?.mainImage === 'string' && input.banners.mainImage
+              ? input.banners.mainImage
+              : defaultSiteSettings.banners.campaigns[0].image,
+          title:
+            typeof input.banners?.mainTitle === 'string' &&
+            input.banners.mainTitle.trim()
+              ? input.banners.mainTitle
+              : defaultSiteSettings.banners.campaigns[0].title,
+          subtitle:
+            typeof input.banners?.mainSubtitle === 'string' &&
+            input.banners.mainSubtitle.trim()
+              ? input.banners.mainSubtitle
+              : defaultSiteSettings.banners.campaigns[0].subtitle,
+        },
+        ...defaultSiteSettings.banners.campaigns.slice(1),
+      ];
+
   return {
     ...defaultSiteSettings,
     ...input,
@@ -187,7 +277,11 @@ export function mergeSiteSettings(value: unknown): SiteSettings {
             : link,
         )
       : defaultSiteSettings.bioLinks,
-    banners: { ...defaultSiteSettings.banners, ...input.banners },
+    banners: {
+      ...defaultSiteSettings.banners,
+      ...input.banners,
+      campaigns,
+    },
   };
 }
 

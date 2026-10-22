@@ -16,6 +16,7 @@ import {
   type SiteSettings,
 } from '@/lib/site-settings';
 import { isMissingRelationError } from '@/lib/supabase-errors';
+import { getFlyerMimeType } from '@/lib/flyer-file';
 import { usePathname } from 'next/navigation';
 
 export interface AdminOffer {
@@ -28,6 +29,7 @@ export interface AdminOffer {
 }
 
 export interface AdminFlyer {
+  id: string;
   title: string;
   validUntil: string;
   fileName: string;
@@ -37,14 +39,18 @@ export interface AdminFlyer {
 }
 
 interface AdminDataContextValue {
-  data: { flyer: AdminFlyer | null };
+  data: { flyer: AdminFlyer | null; flyers: AdminFlyer[] };
+  selectFlyer: (id: string) => void;
+  updateFlyers: (flyers: AdminFlyer[]) => void;
   settings: SiteSettings;
   settingsReady: boolean;
   updateSettings: (settings: SiteSettings) => void;
 }
 
 const AdminDataContext = createContext<AdminDataContextValue>({
-  data: { flyer: null },
+  data: { flyer: null, flyers: [] },
+  selectFlyer: () => undefined,
+  updateFlyers: () => undefined,
   settings: defaultSiteSettings,
   settingsReady: false,
   updateSettings: () => undefined,
@@ -55,43 +61,70 @@ export function AdminDataProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [flyer, setFlyer] = useState<AdminFlyer | null>(null);
+  const [flyers, setFlyers] = useState<AdminFlyer[]>([]);
+  const [selectedFlyerId, setSelectedFlyerId] = useState('');
   const [settings, setSettings] = useState(defaultSiteSettings);
   const [settingsReady, setSettingsReady] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
     let active = true;
-    void supabaseBrowser
-      .from('encartes')
-      .select('titulo, validade, arquivo_url, arquivo_nome')
-      .order('atualizado_em', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (error) {
-          if (isMissingRelationError(error)) {
-            if (active) setFlyer(null);
+    const refreshFlyers = () => {
+      void supabaseBrowser
+        .from('encartes')
+        .select('id, titulo, validade, arquivo_url, arquivo_nome')
+        .gte('validade', currentStoreDate())
+        .order('atualizado_em', { ascending: false })
+        .then(({ data, error }) => {
+          if (error) {
+            if (isMissingRelationError(error)) {
+              if (active) setFlyers([]);
+              return;
+            }
+            console.error('Não foi possível carregar os encartes publicados.', error);
             return;
           }
-          console.error('Não foi possível carregar o encarte publicado.', error);
-          return;
-        }
-        if (active && data) {
-          setFlyer({
-            title: data.titulo,
-            validUntil: data.validade,
-            fileName: data.arquivo_nome,
-            fileType: '',
-            fileSize: 0,
-            fileUrl: data.arquivo_url,
-          });
-        }
-      });
+          if (active) {
+            setFlyers(
+              (data ?? []).map((row) => ({
+                id: row.id,
+                title: row.titulo,
+                validUntil: row.validade,
+                fileName: row.arquivo_nome,
+                fileType: getFlyerMimeType(row.arquivo_nome),
+                fileSize: 0,
+                fileUrl: row.arquivo_url,
+              })),
+            );
+          }
+        });
+    };
+    refreshFlyers();
+    window.addEventListener('flyers-changed', refreshFlyers);
     return () => {
       active = false;
+      window.removeEventListener('flyers-changed', refreshFlyers);
     };
   }, []);
+
+  const [todayDate, setTodayDate] = useState('');
+  useEffect(() => {
+    const refreshDate = () => setTodayDate(currentStoreDate());
+    const initialUpdate = window.setTimeout(refreshDate, 0);
+    const interval = window.setInterval(refreshDate, 60_000);
+    return () => {
+      window.clearTimeout(initialUpdate);
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const activeFlyers = todayDate
+    ? flyers.filter((flyer) => flyer.validUntil >= todayDate)
+    : [];
+  const selectedFlyer =
+    activeFlyers.find((flyer) => flyer.id === selectedFlyerId) ??
+    activeFlyers[0] ??
+    null;
 
   useEffect(() => {
     let active = true;
@@ -188,7 +221,9 @@ export function AdminDataProvider({
   return (
     <AdminDataContext.Provider
       value={{
-        data: { flyer },
+        data: { flyer: selectedFlyer, flyers: activeFlyers },
+        selectFlyer: setSelectedFlyerId,
+        updateFlyers: setFlyers,
         settings,
         updateSettings: setSettings,
         settingsReady,
@@ -200,7 +235,8 @@ export function AdminDataProvider({
 }
 
 export function useAdminData() {
-  return useContext(AdminDataContext);
+  const { data, selectFlyer, updateFlyers } = useContext(AdminDataContext);
+  return { data, selectFlyer, updateFlyers };
 }
 
 export function useSiteSettings() {

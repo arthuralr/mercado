@@ -2,7 +2,17 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import Image from 'next/image';
-import { CalendarDays, Check, FileText, Settings2, Upload } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  CalendarDays,
+  Check,
+  FileText,
+  Plus,
+  Settings2,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { useSiteSettings } from '../admin-data-provider';
 import {
@@ -12,7 +22,7 @@ import {
 } from '@/lib/site-settings';
 
 type ExtraSection = 'settings' | 'submissions' | 'calendar';
-type BannerKey = keyof SiteSettings['banners'];
+type BannerKey = 'secondaryImage' | 'tertiaryImage';
 
 const inputClass =
   'mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700';
@@ -116,6 +126,39 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
+  async function uploadBannerFile(
+    file: File,
+    prefix: string,
+    dimensions: { width: number; height: number },
+  ): Promise<string | null> {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setMessage('Banner: use apenas JPG, PNG ou WebP.');
+      return null;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage('O banner deve ter no máximo 5 MB.');
+      return null;
+    }
+    const bitmap = await createImageBitmap(file);
+    if (bitmap.width !== dimensions.width || bitmap.height !== dimensions.height) {
+      setMessage(
+        `Dimensão inválida. Esta área exige exatamente ${dimensions.width} × ${dimensions.height}px.`,
+      );
+      bitmap.close();
+      return null;
+    }
+    bitmap.close();
+    const path = `banners/${prefix}-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
+    const { data, error } = await supabaseBrowser.storage
+      .from('encartes')
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (error) {
+      setMessage(`Não foi possível enviar o banner: ${error.message}`);
+      return null;
+    }
+    return supabaseBrowser.storage.from('encartes').getPublicUrl(data.path).data.publicUrl;
+  }
+
   async function uploadBanner(
     event: React.ChangeEvent<HTMLInputElement>,
     key: BannerKey,
@@ -124,37 +167,106 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setMessage('Banner: use apenas JPG, PNG ou WebP.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setMessage('O banner deve ter no máximo 5 MB.');
-      return;
-    }
-    const bitmap = await createImageBitmap(file);
-    if (bitmap.width !== dimensions.width || bitmap.height !== dimensions.height) {
-      setMessage(
-        `Dimensão inválida. Esta área exige exatamente ${dimensions.width} × ${dimensions.height}px.`,
-      );
-      bitmap.close();
-      return;
-    }
-    bitmap.close();
-    const path = `banners/${key}-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
-    const { data, error } = await supabaseBrowser.storage
-      .from('encartes')
-      .upload(path, file, { contentType: file.type, upsert: false });
-    if (error) {
-      setMessage(`Não foi possível enviar o banner: ${error.message}`);
-      return;
-    }
-    const publicUrl = supabaseBrowser.storage.from('encartes').getPublicUrl(data.path).data.publicUrl;
+    const publicUrl = await uploadBannerFile(file, key, dimensions);
+    if (!publicUrl) return;
     setDraft((current) => ({
       ...current,
       banners: { ...current.banners, [key]: publicUrl },
     }));
     setMessage('Banner enviado. Salve as configurações para publicar.');
+  }
+
+  function patchCampaignCopy(
+    index: number,
+    key: keyof SiteSettings['banners']['campaigns'][number],
+    value: string,
+  ) {
+    const campaigns = draft.banners.campaigns.map((campaign, campaignIndex) =>
+      campaignIndex === index ? { ...campaign, [key]: value } : campaign,
+    );
+    const banners = { ...draft.banners, campaigns };
+    if (index === 0) {
+      banners.mainTitle = campaigns[0].title;
+      banners.mainSubtitle = campaigns[0].subtitle;
+      banners.mainImage = campaigns[0].image;
+    }
+    patch('banners', banners);
+  }
+
+  async function uploadCampaignImage(
+    event: React.ChangeEvent<HTMLInputElement>,
+    index: number,
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const campaign = draft.banners.campaigns[index];
+    if (!campaign) return;
+    const campaignId = campaign.id;
+    const image = await uploadBannerFile(file, `campaign-${campaignId}`, {
+      width: 1200,
+      height: 400,
+    });
+    if (!image) return;
+    setDraft((current) => {
+      const campaigns = current.banners.campaigns.map((item) =>
+        item.id === campaignId ? { ...item, image } : item,
+      );
+      return {
+        ...current,
+        banners: {
+          ...current.banners,
+          campaigns,
+          mainImage: campaigns[0].image,
+          mainTitle: campaigns[0].title,
+          mainSubtitle: campaigns[0].subtitle,
+        },
+      };
+    });
+    setMessage('Imagem enviada. Salve as configurações para publicar.');
+  }
+
+  function addCampaign() {
+    patch('banners', {
+      ...draft.banners,
+      campaigns: [
+        ...draft.banners.campaigns,
+        {
+          id: crypto.randomUUID(),
+          eyebrow: 'Nova campanha',
+          title: 'Título da campanha',
+          subtitle: 'Descrição da campanha.',
+          button: 'Saiba mais',
+          image: draft.banners.campaigns[0].image,
+        },
+      ],
+    });
+  }
+
+  function moveCampaign(index: number, direction: -1 | 1) {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= draft.banners.campaigns.length) return;
+    const campaigns = [...draft.banners.campaigns];
+    [campaigns[index], campaigns[nextIndex]] = [campaigns[nextIndex], campaigns[index]];
+    patch('banners', {
+      ...draft.banners,
+      campaigns,
+      mainTitle: campaigns[0].title,
+      mainSubtitle: campaigns[0].subtitle,
+      mainImage: campaigns[0].image,
+    });
+  }
+
+  function removeCampaign(index: number) {
+    if (draft.banners.campaigns.length <= 1) return;
+    const campaigns = draft.banners.campaigns.filter((_, itemIndex) => itemIndex !== index);
+    patch('banners', {
+      ...draft.banners,
+      campaigns,
+      mainTitle: campaigns[0].title,
+      mainSubtitle: campaigns[0].subtitle,
+      mainImage: campaigns[0].image,
+    });
   }
 
   async function uploadLogo(event: React.ChangeEvent<HTMLInputElement>) {
@@ -474,12 +586,70 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
       </section>
 
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="m-0 text-lg font-black">Banners e campanha principal</h2>
-        <p className="m-0 text-sm text-slate-600">Banner principal: exatamente <strong>1200 × 400 px</strong>, JPG/PNG/WebP até 5 MB. Use imagem sem textos embutidos: o título e a chamada ficam sobrepostos pelo site. Slots menores: <strong>600 × 300 px</strong>.</p>
-        <label className={labelClass}>Título da campanha<input value={draft.banners.mainTitle} onChange={(event) => patch('banners', { ...draft.banners, mainTitle: event.target.value })} className={inputClass} /></label>
-        <label className={labelClass}>Texto da campanha<textarea rows={2} value={draft.banners.mainSubtitle} onChange={(event) => patch('banners', { ...draft.banners, mainSubtitle: event.target.value })} className={inputClass} /></label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="m-0 text-lg font-black">Carrossel de banners</h2>
+          <button type="button" onClick={addCampaign} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-800">
+            <Plus size={15} />Adicionar banner
+          </button>
+        </div>
+        <p className="m-0 text-sm text-slate-600">Cadastre, edite e ordene os slides exibidos na página inicial. Imagens: exatamente <strong>1200 × 400 px</strong>, JPG/PNG/WebP até 5 MB. Os dois slots de ofertas menores ficam abaixo do carrossel. As alterações são publicadas ao salvar as configurações.</p>
+        {draft.banners.campaigns.map((campaign, index) => (
+          <fieldset key={campaign.id} className="space-y-3 rounded-xl border border-slate-200 p-4">
+            <legend className="px-1 text-sm font-bold text-slate-800">Banner {index + 1}</legend>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-xs text-slate-500">{campaign.image || 'Nenhuma imagem selecionada'}</span>
+              <div className="flex items-center gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white">
+                  <Upload size={15} />Enviar imagem
+                  <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => void uploadCampaignImage(event, index)} />
+                </label>
+                <button type="button" aria-label={`Mover banner ${index + 1} para cima`} disabled={index === 0} onClick={() => moveCampaign(index, -1)} className="rounded-lg border border-slate-200 p-2 text-slate-700 disabled:opacity-40">
+                  <ArrowUp size={16} />
+                </button>
+                <button type="button" aria-label={`Mover banner ${index + 1} para baixo`} disabled={index === draft.banners.campaigns.length - 1} onClick={() => moveCampaign(index, 1)} className="rounded-lg border border-slate-200 p-2 text-slate-700 disabled:opacity-40">
+                  <ArrowDown size={16} />
+                </button>
+                <button type="button" aria-label={`Remover banner ${index + 1}`} disabled={draft.banners.campaigns.length === 1} onClick={() => removeCampaign(index)} className="rounded-lg border border-rose-200 p-2 text-rose-700 disabled:opacity-40">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+            <label className={labelClass}>
+              Chamada
+              <input
+                value={campaign.eyebrow}
+                onChange={(event) => patchCampaignCopy(index, 'eyebrow', event.target.value)}
+                className={inputClass}
+              />
+            </label>
+            <label className={labelClass}>
+              Título
+              <input
+                value={campaign.title}
+                onChange={(event) => patchCampaignCopy(index, 'title', event.target.value)}
+                className={inputClass}
+              />
+            </label>
+            <label className={labelClass}>
+              Subtítulo
+              <textarea
+                rows={2}
+                value={campaign.subtitle}
+                onChange={(event) => patchCampaignCopy(index, 'subtitle', event.target.value)}
+                className={inputClass}
+              />
+            </label>
+            <label className={labelClass}>
+              Texto do botão
+              <input
+                value={campaign.button}
+                onChange={(event) => patchCampaignCopy(index, 'button', event.target.value)}
+                className={inputClass}
+              />
+            </label>
+          </fieldset>
+        ))}
         {([
-          ['mainImage', 'Banner principal (1200 × 400 px)', { width: 1200, height: 400 }],
           ['secondaryImage', 'Slot menor 1 (600 × 300 px)', { width: 600, height: 300 }],
           ['tertiaryImage', 'Slot menor 2 (600 × 300 px)', { width: 600, height: 300 }],
         ] as const).map(([key, label, dimensions]) => (

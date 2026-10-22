@@ -153,6 +153,9 @@ create table if not exists public.encartes (
   atualizado_em timestamptz not null default now()
 );
 
+create index if not exists encartes_validade_atualizado_em_idx
+  on public.encartes (validade, atualizado_em desc);
+
 create table if not exists public.configuracoes_site (
   id text primary key check (id = 'principal'),
   dados jsonb not null,
@@ -643,6 +646,32 @@ values (
       "mainImage": "",
       "mainTitle": "A semana mais fresca do ano.",
       "mainSubtitle": "Hortifrúti selecionado com preços especiais.",
+      "campaigns": [
+        {
+          "id": "hortifruti",
+          "eyebrow": "É tempo de coisa boa",
+          "title": "A semana mais fresca do ano.",
+          "subtitle": "Hortifrúti selecionado com preços especiais.",
+          "button": "Explorar a feirinha",
+          "image": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1800&q=90"
+        },
+        {
+          "id": "carnes",
+          "eyebrow": "Seu churrasco merece",
+          "title": "O melhor do fim de semana começa aqui.",
+          "subtitle": "Cortes especiais, acompanhamentos fresquinhos e tudo para reunir quem você gosta.",
+          "button": "Ver ofertas de carnes",
+          "image": "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1800&q=90"
+        },
+        {
+          "id": "praticidade",
+          "eyebrow": "Praticidade todo dia",
+          "title": "Sua despensa cheia. Seu tempo livre também.",
+          "subtitle": "Receba em casa os favoritos da família com entrega rápida e cuidado de verdade.",
+          "button": "Fazer minhas compras",
+          "image": "https://images.unsplash.com/photo-1543168256-418811576931?auto=format&fit=crop&w=1800&q=90"
+        }
+      ],
       "secondaryImage": "",
       "tertiaryImage": ""
     }

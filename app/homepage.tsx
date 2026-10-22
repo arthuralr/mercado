@@ -59,34 +59,10 @@ const departments = [
   { name: 'Limpeza', icon: Sparkles, color: 'text-[var(--brand-primary)]' },
 ];
 
-const campaigns = [
-  {
-    eyebrow: 'É tempo de coisa boa',
-    title: 'A semana mais fresca do ano.',
-    text: 'Hortifrúti selecionado direto do produtor, com preços especiais para você.',
-    button: 'Explorar a feirinha',
-    image:
-      'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1800&q=90',
-    theme: 'from-emerald-950/95 via-emerald-900/80 to-emerald-900/5',
-  },
-  {
-    eyebrow: 'Seu churrasco merece',
-    title: 'O melhor do fim de semana começa aqui.',
-    text: 'Cortes especiais, acompanhamentos fresquinhos e tudo para reunir quem você gosta.',
-    button: 'Ver ofertas de carnes',
-    image:
-      'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1800&q=90',
-    theme: 'from-slate-950/95 via-slate-900/75 to-slate-900/5',
-  },
-  {
-    eyebrow: 'Praticidade todo dia',
-    title: 'Sua despensa cheia. Seu tempo livre também.',
-    text: 'Receba em casa os favoritos da família com entrega rápida e cuidado de verdade.',
-    button: 'Fazer minhas compras',
-    image:
-      'https://images.unsplash.com/photo-1543168256-418811576931?auto=format&fit=crop&w=1800&q=90',
-    theme: 'from-orange-950/95 via-orange-900/80 to-orange-900/5',
-  },
+const campaignThemes = [
+  'from-emerald-950/95 via-emerald-900/80 to-emerald-900/5',
+  'from-slate-950/95 via-slate-900/75 to-slate-900/5',
+  'from-orange-950/95 via-orange-900/80 to-orange-900/5',
 ];
 
 const tabs = ['Mais vendidos', 'Feirinha de hortifrúti', 'Carnes e churrasco'];
@@ -115,6 +91,8 @@ export default function HomePage({ products }: { products: Product[] }) {
     openCart,
   } = useShoppingCart();
   const { settings } = useSiteSettings();
+  const campaigns = settings.banners.campaigns;
+  const campaignCount = Math.max(campaigns.length, 1);
   const branches = settings.institution.branches;
   const activeBranchDetails =
     branches.find((branch) => branch.id === activeBranchId) ?? branches[0];
@@ -124,11 +102,16 @@ export default function HomePage({ products }: { products: Product[] }) {
   const activeBranchHours = activeBranchDetails?.hours || settings.institution.hours;
 
   useEffect(() => {
+    if (campaignCount < 2) return;
     const interval = window.setInterval(() => {
-      setActiveCampaign((current) => (current + 1) % campaigns.length);
+      setActiveCampaign(
+        (current) => (Math.min(current, campaignCount - 1) + 1) % campaignCount,
+      );
     }, 6500);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [campaignCount]);
+
+  const activeCampaignIndex = Math.min(activeCampaign, campaignCount - 1);
 
   const filteredSuggestions = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR');
@@ -192,11 +175,15 @@ export default function HomePage({ products }: { products: Product[] }) {
     });
   }
 
-  const currentCampaign = campaigns[activeCampaign];
+  const currentCampaign = campaigns[activeCampaignIndex];
+  const currentCampaignTheme =
+    campaignThemes[activeCampaignIndex % campaignThemes.length];
 
   function changeCampaign(direction: number) {
     setActiveCampaign(
-      (current) => (current + direction + campaigns.length) % campaigns.length,
+      (current) =>
+        (Math.min(current, campaignCount - 1) + direction + campaignCount) %
+        campaignCount,
     );
   }
 
@@ -458,9 +445,9 @@ export default function HomePage({ products }: { products: Product[] }) {
       >
         <div className="relative isolate min-h-[360px] overflow-hidden rounded-[2rem] bg-emerald-950 sm:min-h-[420px]">
           <Image
-            key={activeCampaign === 0 ? settings.banners.mainImage || currentCampaign.image : currentCampaign.image}
-            src={activeCampaign === 0 ? settings.banners.mainImage || currentCampaign.image : currentCampaign.image}
-            alt=""
+            key={currentCampaign.id}
+            src={currentCampaign.image}
+            alt={currentCampaign.title}
             fill
             priority
             sizes="(max-width: 1280px) 100vw, 1280px"
@@ -468,7 +455,7 @@ export default function HomePage({ products }: { products: Product[] }) {
             className="absolute inset-0 -z-20 object-cover"
           />
           <div
-            className={`absolute inset-0 -z-10 bg-gradient-to-r ${currentCampaign.theme}`}
+            className={`absolute inset-0 -z-10 bg-gradient-to-r ${currentCampaignTheme}`}
           />
           <div className="relative flex min-h-[360px] items-center px-7 py-10 sm:min-h-[420px] sm:px-14 lg:px-20">
             <div className="max-w-xl text-white">
@@ -477,10 +464,10 @@ export default function HomePage({ products }: { products: Product[] }) {
                 {currentCampaign.eyebrow}
               </span>
               <h1 className="mb-4 mt-5 max-w-lg text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
-                {activeCampaign === 0 ? settings.banners.mainTitle || currentCampaign.title : currentCampaign.title}
+                {currentCampaign.title}
               </h1>
               <p className="mb-7 max-w-md text-sm leading-6 text-white/85 sm:text-base">
-                {activeCampaign === 0 ? settings.banners.mainSubtitle || currentCampaign.text : currentCampaign.text}
+                {currentCampaign.subtitle}
               </p>
               <a
                 href="#vitrines"
@@ -503,13 +490,13 @@ export default function HomePage({ products }: { products: Product[] }) {
             <div className="flex items-center gap-1.5 px-1">
               {campaigns.map((campaign, index) => (
                 <button
-                  key={campaign.eyebrow}
+                  key={campaign.id}
                   type="button"
                   onClick={() => setActiveCampaign(index)}
                   aria-label={`Ir para campanha ${index + 1}`}
-                  aria-current={activeCampaign === index}
+                  aria-current={activeCampaignIndex === index}
                   className={`h-2 rounded-full transition-all ${
-                    activeCampaign === index ? 'w-7 bg-white' : 'w-2 bg-white/50'
+                    activeCampaignIndex === index ? 'w-7 bg-white' : 'w-2 bg-white/50'
                   }`}
                 />
               ))}

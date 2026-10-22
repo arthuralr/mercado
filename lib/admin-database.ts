@@ -6,6 +6,11 @@ import { mapProductRows, type ProductRow } from '@/lib/catalog-mapper';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import { currentStoreDate } from '@/lib/site-settings';
 import { isMissingRelationError } from '@/lib/supabase-errors';
+import {
+  getFlyerMimeType,
+  isSupportedFlyerFile,
+  MAX_FLYER_FILE_SIZE,
+} from '@/lib/flyer-file';
 
 function throwIfError(error: { message: string } | null, action: string) {
   if (error) throw new Error(`${action}: ${error.message}`);
@@ -91,25 +96,22 @@ export async function removeOffer(id: string) {
   throwIfError(error, 'Não foi possível remover a oferta');
 }
 
-export async function fetchFlyer(): Promise<AdminFlyer | null> {
+export async function fetchFlyers(): Promise<AdminFlyer[]> {
   const { data, error } = await supabaseBrowser
     .from('encartes')
-    .select('titulo, validade, arquivo_url, arquivo_nome')
-    .order('atualizado_em', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (isMissingRelationError(error)) return null;
+    .select('id, titulo, validade, arquivo_url, arquivo_nome')
+    .order('atualizado_em', { ascending: false });
+  if (isMissingRelationError(error)) return [];
   throwIfError(error, 'Não foi possível carregar o encarte');
-  return data
-    ? {
-        title: data.titulo,
-        validUntil: data.validade,
-        fileName: data.arquivo_nome,
-        fileType: '',
-        fileSize: 0,
-        fileUrl: data.arquivo_url,
-      }
-    : null;
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    title: row.titulo,
+    validUntil: row.validade,
+    fileName: row.arquivo_nome,
+    fileType: getFlyerMimeType(row.arquivo_nome),
+    fileSize: 0,
+    fileUrl: row.arquivo_url,
+  }));
 }
 
 export async function persistFlyer(
@@ -118,12 +120,18 @@ export async function persistFlyer(
 ) {
   let fileUrl = flyer.fileUrl;
   if (file) {
+    if (!isSupportedFlyerFile(file)) {
+      throw new Error('Formato não suportado. Escolha um arquivo PDF, JPG, PNG ou WebP.');
+    }
+    if (file.size > MAX_FLYER_FILE_SIZE) {
+      throw new Error('O arquivo precisa ter no máximo 10 MB.');
+    }
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
     const path = `${Date.now()}-${safeName}`;
     const { data: uploaded, error: uploadError } =
       await supabaseBrowser.storage.from('encartes').upload(path, file, {
         upsert: true,
-        contentType: file.type,
+        contentType: getFlyerMimeType(file.name),
       });
     throwIfError(uploadError, 'Não foi possível enviar o encarte');
     if (!uploaded) {
@@ -134,14 +142,6 @@ export async function persistFlyer(
   }
   if (!fileUrl) throw new Error('Escolha um arquivo de encarte.');
 
-  const { data: existing, error: selectError } = await supabaseBrowser
-    .from('encartes')
-    .select('id')
-    .order('atualizado_em', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  throwIfError(selectError, 'Não foi possível verificar o encarte atual');
-
   const values = {
     titulo: flyer.title,
     validade: flyer.validUntil,
@@ -149,20 +149,77 @@ export async function persistFlyer(
     arquivo_nome: file?.name ?? flyer.fileName,
     atualizado_em: new Date().toISOString(),
   };
-  const result = existing
-    ? await supabaseBrowser.from('encartes').update(values).eq('id', existing.id)
-    : await supabaseBrowser.from('encartes').insert(values);
+  const result = flyer.id
+    ? await supabaseBrowser
+        .from('encartes')
+        .update(values)
+        .eq('id', flyer.id)
+        .select('id')
+        .maybeSingle()
+    : await supabaseBrowser
+        .from('encartes')
+        .insert(values)
+        .select('id')
+        .single();
   throwIfError(result.error, 'Não foi possível salvar os dados do encarte');
-  return { ...flyer, fileUrl, fileName: values.arquivo_nome };
+  if (!result.data) {
+    throw new Error('Encarte não encontrado ou não autorizado para alteração.');
+  }
+  return {
+    ...flyer,
+    id: result.data.id,
+    fileUrl,
+    fileName: values.arquivo_nome,
+    fileType: file
+      ? getFlyerMimeType(file.name)
+      : getFlyerMimeType(values.arquivo_nome),
+  };
+}
+
+export async function deleteFlyer(id: string): Promise<void> {
+  const { data: flyer, error: selectError } = await supabaseBrowser
+    .from('encartes')
+    .select('arquivo_url')
+    .eq('id', id)
+    .maybeSingle();
+  throwIfError(selectError, 'Não foi possível carregar o encarte para exclusão');
+  if (!flyer) throw new Error('Encarte não encontrado ou não autorizado para exclusão.');
+
+  const storagePathMarker = '/storage/v1/object/public/encartes/';
+  const storagePathStart = flyer.arquivo_url.indexOf(storagePathMarker);
+  if (storagePathStart >= 0) {
+    const storagePath = decodeURIComponent(
+      flyer.arquivo_url.slice(storagePathStart + storagePathMarker.length),
+    );
+    const { error: storageError } = await supabaseBrowser.storage
+      .from('encartes')
+      .remove([storagePath]);
+    throwIfError(storageError, 'Não foi possível excluir o arquivo do encarte');
+  }
+
+  const { data, error } = await supabaseBrowser
+    .from('encartes')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
+  throwIfError(error, 'Não foi possível excluir o encarte');
+  if (!data) throw new Error('Encarte não encontrado ou não autorizado para exclusão.');
 }
 
 export async function fetchTodayOrderCount(): Promise<number> {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
+  const today = currentStoreDate();
+  const [year, month, day] = today.split('-').map(Number);
+  const tomorrow = new Date(Date.UTC(year, month - 1, day + 1))
+    .toISOString()
+    .slice(0, 10);
+  const start = new Date(`${today}T00:00:00-03:00`).toISOString();
+  const end = new Date(`${tomorrow}T00:00:00-03:00`).toISOString();
   const { count, error } = await supabaseBrowser
     .from('pedidos')
     .select('id', { count: 'exact', head: true })
-    .gte('criado_em', start.toISOString());
+    .gte('criado_em', start)
+    .lt('criado_em', end);
   throwIfError(error, 'Não foi possível carregar os pedidos de hoje');
   return count ?? 0;
 }

@@ -1,12 +1,13 @@
 'use client';
 
 import Image from 'next/image';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CalendarDays, Plus, ShoppingBasket, X } from 'lucide-react';
 import { useAdminData } from '../admin-data-provider';
 import { useShoppingCart } from '../cart-provider';
 import { useSiteSettings } from '../admin-data-provider';
 import type { CatalogProduct } from '@/lib/catalog-types';
+import { isPdfFlyer } from '@/lib/flyer-file';
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -44,16 +45,29 @@ export function FlyerValidity() {
 }
 
 export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
-  const { data } = useAdminData();
+  const { data, selectFlyer } = useAdminData();
   const { addToCart } = useShoppingCart();
   const { settings } = useSiteSettings();
+  const [now, setNow] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(
     null,
   );
+  useEffect(() => {
+    const updateCurrentTime = () => setNow(Date.now());
+    updateCurrentTime();
+    const interval = window.setInterval(updateCurrentTime, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const linkedProducts = products.filter(
-    (product) =>
-      product.active !== false &&
-      (product.flyerPage !== null || product.flashOfferEndsAt),
+    (product) => {
+      if (product.active === false) return false;
+      const isFeatured = Boolean(product.badge?.trim());
+      const offerEndsAt = Date.parse(product.flashOfferEndsAt ?? '');
+      const hasActiveOffer =
+        Number.isFinite(offerEndsAt) && (now === 0 || offerEndsAt > now);
+      return isFeatured || hasActiveOffer;
+    },
   );
   const hasArtwork = Boolean(data.flyer?.fileUrl);
   if (!hasArtwork && !linkedProducts.length) return null;
@@ -61,11 +75,29 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
   return (
     <>
       <section aria-label="Encarte e produtos em destaque" className="mb-10">
+        {data.flyers.length > 1 && (
+          <div className="mb-4 flex gap-2 overflow-x-auto pb-2" aria-label="Escolha um encarte">
+            {data.flyers.map((flyer) => (
+              <button
+                key={flyer.id}
+                type="button"
+                aria-pressed={data.flyer?.id === flyer.id}
+                onClick={() => selectFlyer(flyer.id)}
+                className={`shrink-0 rounded-full border px-4 py-2.5 text-sm font-bold transition ${
+                  data.flyer?.id === flyer.id
+                    ? 'border-emerald-800 bg-emerald-800 text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:text-emerald-800'
+                }`}
+              >
+                {flyer.title}
+              </button>
+            ))}
+          </div>
+        )}
         <div className={`grid items-start gap-5 ${hasArtwork ? 'lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.8fr)]' : ''}`}>
-          {hasArtwork && (
+          {hasArtwork && data.flyer && (
             <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-              {data.flyer?.fileType === 'application/pdf' ||
-              data.flyer?.fileName.toLowerCase().endsWith('.pdf') ? (
+              {isPdfFlyer(data.flyer.fileName, data.flyer.fileType) ? (
                 <iframe
                   src={data.flyer.fileUrl}
                   title={data.flyer.title}
@@ -73,8 +105,8 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
                 />
               ) : (
                 <Image
-                  src={data.flyer!.fileUrl!}
-                  alt={data.flyer?.title ?? 'Encarte semanal de ofertas'}
+                  src={data.flyer.fileUrl ?? ''}
+                  alt={data.flyer.title}
                   width={1600}
                   height={2000}
                   unoptimized
@@ -135,8 +167,7 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
               </ul>
             ) : (
               <p className="m-0 p-5 text-sm text-slate-500">
-                Nenhum produto foi vinculado ao encarte. Marque os produtos na
-                seção correspondente no cadastro do catálogo.
+                Nenhum produto em destaque ou com oferta ativa disponível no momento.
               </p>
             )}
           </aside>
