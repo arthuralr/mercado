@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f7f8f4;
+  --foreground: #292d32;
+  --brand-primary: #067647;
+  --brand-secondary: #334155;
 }
 
 @theme inline {
@@ -12,15 +14,111 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+:root [class~="text-slate-500"],
+:root [class~="text-slate-600"],
+:root [class~="text-slate-700"] {
+  color: #4b5563;
+}
+
+:root [class~="text-emerald-200"],
+:root [class~="text-emerald-300"],
+:root [class~="text-emerald-400"],
+:root [class~="text-emerald-500"],
+:root [class~="text-emerald-600"],
+:root [class~="text-emerald-700"],
+:root [class~="text-emerald-800"],
+:root [class~="text-emerald-900"],
+:root [class~="text-emerald-950"] {
+  color: var(--brand-primary);
+}
+
+:root [class~="text-orange-400"],
+:root [class~="text-orange-500"],
+:root [class~="text-orange-600"],
+:root [class~="text-orange-700"] {
+  color: var(--brand-secondary);
+}
+
+:root [class~="text-rose-500"],
+:root [class~="text-rose-600"],
+:root [class~="text-rose-700"],
+:root [class~="text-amber-300"],
+:root [class~="text-amber-600"],
+:root [class~="text-amber-700"],
+:root [class~="text-sky-600"],
+:root [class~="text-violet-600"],
+:root [class~="text-blue-700"] {
+  color: #4b5563;
+}
+
+:root [class~="bg-emerald-700"],
+:root [class~="bg-emerald-800"],
+:root [class~="bg-emerald-900"],
+:root [class~="bg-emerald-950"] {
+  background-color: var(--brand-primary);
+}
+
+:root [class~="bg-orange-500"],
+:root [class~="bg-orange-600"] {
+  background-color: var(--brand-secondary);
+}
+
+:root [class~="bg-emerald-50"],
+:root [class~="bg-emerald-100"],
+:root [class~="bg-emerald-50/60"] {
+  background-color: color-mix(in srgb, var(--brand-primary) 8%, white);
+}
+
+:root [class~="border-emerald-100"],
+:root [class~="border-emerald-200"],
+:root [class~="border-emerald-300"] {
+  border-color: color-mix(in srgb, var(--brand-primary) 22%, white);
+}
+
+:root [class~="border-emerald-700"],
+:root [class~="border-emerald-800"],
+:root [class~="border-emerald-900"] {
+  border-color: color-mix(in srgb, var(--brand-primary) 75%, #111827);
+}
+
+:root [class~="bg-orange-50"] {
+  background-color: color-mix(in srgb, var(--brand-secondary) 8%, white);
+}
+
+:root [class~="border-orange-200"] {
+  border-color: color-mix(in srgb, var(--brand-secondary) 22%, white);
+}
+
+:root [class~="hover:bg-emerald-50"]:hover,
+:root [class~="hover:bg-emerald-100"]:hover {
+  background-color: color-mix(in srgb, var(--brand-primary) 10%, white);
+}
+
+:root [class~="hover:bg-emerald-700"]:hover,
+:root [class~="hover:bg-emerald-800"]:hover {
+  background-color: color-mix(in srgb, var(--brand-primary) 88%, black);
+}
+
+:root [class~="hover:bg-orange-600"]:hover {
+  background-color: color-mix(in srgb, var(--brand-secondary) 88%, black);
+}
+
+:root [class~="hover:text-emerald-800"]:hover,
+:root [class~="hover:text-emerald-900"]:hover,
+:root [class~="hover:text-orange-600"]:hover {
+  color: var(--brand-primary);
 }
