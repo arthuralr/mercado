@@ -161,6 +161,75 @@ create table if not exists public.configuracoes_site (
 
 do $$
 declare
+  v_id_type text;
+  v_json_column text;
+begin
+  if to_regclass('public.configuracoes_site') is null then
+    return;
+  end if;
+
+  select data_type
+    into v_id_type
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'configuracoes_site'
+      and column_name = 'id';
+
+  if v_id_type is null then
+    raise exception 'A tabela public.configuracoes_site precisa ter uma coluna id.';
+  end if;
+
+  if v_id_type <> 'text' then
+    alter table public.configuracoes_site alter column id drop identity if exists;
+    alter table public.configuracoes_site alter column id drop default;
+    alter table public.configuracoes_site
+      alter column id type text using id::text;
+  end if;
+
+  alter table public.configuracoes_site
+    add column if not exists dados jsonb;
+  alter table public.configuracoes_site
+    add column if not exists atualizado_em timestamptz not null default now();
+
+  select column_name
+    into v_json_column
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'configuracoes_site'
+      and column_name in (
+        'configuracoes',
+        'config',
+        'settings',
+        'config_json',
+        'settings_json'
+      )
+      and data_type in ('json', 'jsonb')
+    order by case column_name
+      when 'configuracoes' then 1
+      when 'config' then 2
+      when 'settings' then 3
+      when 'config_json' then 4
+      else 5
+    end
+    limit 1;
+
+  if v_json_column is not null then
+    execute format(
+      'update public.configuracoes_site
+       set dados = %I
+       where dados is null and %I is not null',
+      v_json_column,
+      v_json_column
+    );
+  end if;
+
+  update public.configuracoes_site set dados = '{}'::jsonb where dados is null;
+  alter table public.configuracoes_site alter column dados set not null;
+end;
+$$;
+
+do $$
+declare
   v_data_column text;
   v_order_clause text;
   v_has_id boolean;
@@ -579,7 +648,9 @@ values (
     }
   }'::jsonb
 )
-on conflict (id) do nothing;
+on conflict (id) do update
+  set dados = excluded.dados
+  where public.configuracoes_site.dados = '{}'::jsonb;
 
 alter table public.pedidos
   add column if not exists cliente_id uuid references auth.users(id) on delete set null;

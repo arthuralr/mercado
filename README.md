@@ -18,8 +18,12 @@ pelo painel. Se existir a tabela legada `configuracoes_loja`, o script tenta
 copiar uma linha de configuração JSON para `configuracoes_site` sem substituir
 configurações já existentes; a tabela antiga é preservada. Se ela não tiver uma
 coluna JSON reconhecida, o SQL informa isso e os dados precisam ser mapeados
-manualmente antes da migração. O script também solicita a atualização do cache
-de schema da API do Supabase.
+manualmente antes da migração. Para instalações em que `configuracoes_site.id`
+foi criada incorretamente como `bigint`, o script converte os valores existentes
+para texto e prepara as colunas `dados` e `atualizado_em`; os registros antigos
+são preservados e a configuração `principal` recebe os valores padrão quando
+está vazia. O script também solicita a atualização do cache de schema da API do
+Supabase.
 
 O script é repetível para os objetos que gerencia, mas revise diferenças de
 tipos/constraints em tabelas preexistentes antes de aplicá-lo em produção. Em
