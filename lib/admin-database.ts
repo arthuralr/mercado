@@ -5,6 +5,7 @@ import type { AdminFlyer, AdminOffer } from '@/app/admin-data-provider';
 import { mapProductRows, type ProductRow } from '@/lib/catalog-mapper';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import { currentStoreDate } from '@/lib/site-settings';
+import { isMissingRelationError } from '@/lib/supabase-errors';
 
 function throwIfError(error: { message: string } | null, action: string) {
   if (error) throw new Error(`${action}: ${error.message}`);
@@ -97,6 +98,7 @@ export async function fetchFlyer(): Promise<AdminFlyer | null> {
     .order('atualizado_em', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (isMissingRelationError(error)) return null;
   throwIfError(error, 'Não foi possível carregar o encarte');
   return data
     ? {

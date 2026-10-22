@@ -15,6 +15,7 @@ import {
   SITE_SETTINGS_TABLE,
   type SiteSettings,
 } from '@/lib/site-settings';
+import { isMissingRelationError } from '@/lib/supabase-errors';
 import { usePathname } from 'next/navigation';
 
 export interface AdminOffer {
@@ -69,6 +70,10 @@ export function AdminDataProvider({
       .maybeSingle()
       .then(({ data, error }) => {
         if (error) {
+          if (isMissingRelationError(error)) {
+            if (active) setFlyer(null);
+            return;
+          }
           console.error('Não foi possível carregar o encarte publicado.', error);
           return;
         }
