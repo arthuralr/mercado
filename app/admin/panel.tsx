@@ -16,6 +16,7 @@ import {
   Eye,
   FileSpreadsheet,
   FileUp,
+  Info,
   LayoutDashboard,
   LogOut,
   Inbox,
@@ -605,7 +606,25 @@ export default function AdminDashboard({
                 <button type="button" onClick={() => csvInput.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-50"><FileSpreadsheet size={17} /> Importar lista CSV</button>
                 <input ref={csvInput} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => { setCsvFile(event.target.files?.[0] ?? null); setCsvMessage(''); }} />
               </div>
-              {csvFile && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm"><span><strong>{csvFile.name}</strong> selecionado · cabeçalhos <code>id,preco_normal,estoque</code></span><div className="flex gap-2"><button type="button" onClick={() => void importPriceList()} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white">Importar preços</button><button type="button" onClick={() => { setCsvFile(null); setCsvMessage(''); }} aria-label="Cancelar seleção de CSV" className="rounded-lg p-2 text-slate-600 hover:bg-white"><X size={16} /></button></div></div>}
+              <aside aria-label="Ajuda para importar arquivo CSV" className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 sm:p-5">
+                <div className="flex items-start gap-3">
+                  <Info size={19} className="mt-0.5 shrink-0 text-blue-700" />
+                  <div className="min-w-0 space-y-2">
+                    <h3 className="m-0 text-sm font-black text-slate-900">Como preparar sua lista CSV</h3>
+                    <p className="m-0 text-sm text-slate-700">
+                      Colunas obrigatórias: <code className="rounded bg-white px-1.5 py-0.5 font-bold">id</code> e <code className="rounded bg-white px-1.5 py-0.5 font-bold">preco_normal</code>. A coluna <code className="rounded bg-white px-1.5 py-0.5 font-bold">estoque</code> é opcional.
+                    </p>
+                    <p className="m-0 text-sm font-semibold text-amber-900">
+                      A importação atualiza produtos que já existem, localizados pelo ID. Ela não cria produtos novos.
+                    </p>
+                    <div className="rounded-xl border border-blue-100 bg-white px-3 py-2.5">
+                      <p className="mb-1 mt-0 text-xs font-bold uppercase tracking-wide text-slate-500">Exemplo (separador ; e decimal com vírgula)</p>
+                      <code className="block overflow-x-auto whitespace-pre text-xs leading-5 text-slate-800">id;preco_normal;estoque<br />produto-123;12,50;30</code>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+              {csvFile && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm"><span><strong>{csvFile.name}</strong> selecionado · cabeçalhos <code>id;preco_normal;estoque</code></span><div className="flex gap-2"><button type="button" onClick={() => void importPriceList()} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white">Importar preços</button><button type="button" onClick={() => { setCsvFile(null); setCsvMessage(''); }} aria-label="Cancelar seleção de CSV" className="rounded-lg p-2 text-slate-600 hover:bg-white"><X size={16} /></button></div></div>}
               {csvMessage && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{csvMessage}</p>}
               <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
                 <table className="w-full min-w-[820px] border-collapse text-left">
@@ -627,7 +646,7 @@ export default function AdminDashboard({
                 </table>
                 {!filteredProducts.length && <p className="p-8 text-center text-sm text-slate-500">Nenhum produto encontrado.</p>}
               </div>
-              <p className="text-xs leading-5 text-slate-500">Importação CSV funcional: informe IDs existentes e os cabeçalhos <code>id,preco_normal</code>, com a coluna opcional <code>estoque</code>. A gravação é transacional e rejeita o arquivo inteiro se algum ID/preço estiver inválido.</p>
+              <p className="text-xs leading-5 text-slate-500">A importação atualiza preços e, se informada, a quantidade em estoque dos produtos selecionados. Se qualquer ID ou valor for inválido, o arquivo inteiro é rejeitado.</p>
             </div>
           )}
 

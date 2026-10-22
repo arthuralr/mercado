@@ -57,6 +57,7 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
   const [draft, setDraft] = useState(initialSettings);
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -168,17 +169,68 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
       setMessage('O logotipo deve ter no máximo 2 MB.');
       return;
     }
-    const path = `logos/logo-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
-    const { data, error } = await supabaseBrowser.storage
-      .from('encartes')
-      .upload(path, file, { contentType: file.type, upsert: false });
-    if (error) {
-      setMessage(`Não foi possível enviar o logotipo: ${error.message}`);
-      return;
+
+    setLogoUploading(true);
+    setMessage('');
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
+      const path = `logos/logo-${crypto.randomUUID()}-${safeName}`;
+      const { data, error } = await supabaseBrowser.storage
+        .from('encartes')
+        .upload(path, file, { contentType: file.type, upsert: false });
+      if (error) {
+        console.error('Falha ao enviar o logotipo para o bucket encartes.', error);
+        setMessage(`Não foi possível enviar o logotipo: ${error.message}`);
+        return;
+      }
+      if (!data?.path) {
+        throw new Error('O Supabase Storage não retornou o caminho do arquivo enviado.');
+      }
+
+      const logoUrl = supabaseBrowser.storage
+        .from('encartes')
+        .getPublicUrl(data.path).data.publicUrl;
+      if (!logoUrl) {
+        throw new Error('Não foi possível obter a URL pública do logotipo enviado.');
+      }
+
+      const nextDraft: SiteSettings = {
+        ...draft,
+        brand: { ...draft.brand, logoUrl },
+      };
+      setDraft(nextDraft);
+
+      const { error: settingsError } = await supabaseBrowser
+        .from(SITE_SETTINGS_TABLE)
+        .upsert(
+          {
+            id: 'principal',
+            dados: nextDraft,
+            atualizado_em: new Date().toISOString(),
+          },
+          { onConflict: 'id' },
+        );
+      if (settingsError) {
+        console.error('Logotipo enviado, mas não foi possível gravar a URL nas configurações da loja.', settingsError);
+        setMessage(
+          `Logotipo enviado, mas não foi possível salvar o link nas configurações: ${settingsError.message}. Use “Salvar e publicar configurações” para tentar novamente.`,
+        );
+        return;
+      }
+
+      updateSettings(nextDraft);
+      window.dispatchEvent(new Event('site-settings-changed'));
+      setMessage('Logotipo enviado e publicado nas configurações da loja.');
+    } catch (error) {
+      console.error('Falha inesperada ao enviar ou salvar o logotipo.', error);
+      setMessage(
+        error instanceof Error
+          ? `Não foi possível concluir o envio do logotipo: ${error.message}`
+          : 'Não foi possível concluir o envio do logotipo por um erro inesperado.',
+      );
+    } finally {
+      setLogoUploading(false);
     }
-    const logoUrl = supabaseBrowser.storage.from('encartes').getPublicUrl(data.path).data.publicUrl;
-    setDraft((current) => ({ ...current, brand: { ...current.brand, logoUrl } }));
-    setMessage('Logotipo carregado. Salve para publicar em todo o site.');
   }
 
   function updateBranch(
@@ -247,7 +299,8 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
             </div>
           )}
           <div className="min-w-0 flex-1 space-y-2">
-            <label className={labelClass}>Logotipo do mercado<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void uploadLogo(event)} className={`${inputClass} file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2`} /></label>
+            <label className={labelClass}>Logotipo do mercado<input type="file" accept="image/jpeg,image/png,image/webp" disabled={logoUploading} onChange={(event) => void uploadLogo(event)} className={`${inputClass} file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 disabled:opacity-60`} /></label>
+            {logoUploading && <p role="status" className="m-0 text-xs font-semibold text-emerald-800">Enviando e publicando logotipo…</p>}
             <p className="m-0 text-xs text-slate-500">JPG, PNG ou WebP até 2 MB. Ao publicar, o cabeçalho e o rodapé serão atualizados.</p>
             {draft.brand.logoUrl && <button type="button" onClick={() => patch('brand', { ...draft.brand, logoUrl: '' })} className="text-xs font-semibold text-slate-600 underline">Remover logotipo</button>}
           </div>
