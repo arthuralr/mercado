@@ -159,6 +159,7 @@ create index if not exists encartes_validade_atualizado_em_idx
 create table if not exists public.configuracoes_site (
   id text primary key check (id = 'principal'),
   dados jsonb not null,
+  venda_online_ativa boolean not null default true,
   atualizado_em timestamptz not null default now()
 );
 
@@ -191,6 +192,8 @@ begin
 
   alter table public.configuracoes_site
     add column if not exists dados jsonb;
+  alter table public.configuracoes_site
+    add column if not exists venda_online_ativa boolean not null default true;
   alter table public.configuracoes_site
     add column if not exists atualizado_em timestamptz not null default now();
 
@@ -406,7 +409,11 @@ create policy "Validação de pedidos enviados"
     and total >= 0
     and status = 'recebido'
     and coalesce((
-      select (dados ->> 'commerceEnabled')::boolean
+      select coalesce(
+        venda_online_ativa,
+        (dados ->> 'venda_online_ativa')::boolean,
+        (dados ->> 'commerceEnabled')::boolean
+      )
       from public.configuracoes_site where id = 'principal'
     ), true)
     and case metodo_pagamento
@@ -596,6 +603,7 @@ create policy "Anônimos não removem arquivos de encarte"
 create table if not exists public.configuracoes_site (
   id text primary key check (id = 'principal'),
   dados jsonb not null,
+  venda_online_ativa boolean not null default true,
   atualizado_em timestamptz not null default now()
 );
 
@@ -603,6 +611,7 @@ insert into public.configuracoes_site (id, dados)
 values (
   'principal',
   '{
+    "venda_online_ativa": true,
     "commerceEnabled": true,
     "payments": {
       "pix": {"enabled": true, "key": ""},
@@ -989,7 +998,11 @@ declare
 begin
   select dados into v_config
     from public.configuracoes_site where id = 'principal';
-  if coalesce((v_config ->> 'commerceEnabled')::boolean, true) is false then
+  if coalesce(
+    (v_config ->> 'venda_online_ativa')::boolean,
+    (v_config ->> 'commerceEnabled')::boolean,
+    true
+  ) is false then
     raise exception 'As compras online estão temporariamente desativadas';
   end if;
   if not coalesce(case new.metodo_pagamento

@@ -5,6 +5,7 @@ import {
   PageIntro,
   ShopHeader,
 } from '../shop-components';
+import { ShoppingListCalloutBanner } from '../shopping-list-tool';
 import { getCatalogProducts } from '@/lib/catalog';
 import { getLocalPageMetadata } from '@/lib/local-seo';
 
@@ -59,6 +60,9 @@ export default async function CatalogPage({
           title={departamento ?? 'Nosso catálogo'}
           description="Encontre seus favoritos com praticidade. Use os filtros para chegar rapidinho ao que você precisa."
         />
+        <div className="mb-8">
+          <ShoppingListCalloutBanner />
+        </div>
         <CatalogListing
           products={products}
           initialDepartment={departamento}

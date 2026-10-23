@@ -5,12 +5,16 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useShoppingCart } from './cart-provider';
-import { useSiteSettings } from './admin-data-provider';
+import { useOnlineSales, useSiteSettings } from './admin-data-provider';
 import BrandLogo from './brand-logo';
 import CategoryShowcase from './category-showcase';
 import FlashOffersSection from './flash-offers-section';
 import { formatOfferCountdown } from './shop-components';
-import { isSafeWebUrl } from '@/lib/site-settings';
+import {
+  openQuickShoppingList,
+  ShoppingListCalloutBanner,
+  useQuickShoppingListCount,
+} from './shopping-list-tool';
 import { useManagedProducts } from './admin-data-provider';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import {
@@ -22,6 +26,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Clock3,
   Croissant,
   Heart,
@@ -30,7 +35,6 @@ import {
   MapPin,
   Menu,
   MessageCircle,
-  Package,
   Plus,
   Search,
   ShieldCheck,
@@ -92,16 +96,17 @@ export default function HomePage({ products }: { products: Product[] }) {
     addToCart,
     openCart,
   } = useShoppingCart();
-  const { settings } = useSiteSettings();
+  const { settings, venda_online_ativa } = useSiteSettings();
+  const quickListCount = useQuickShoppingListCount();
   const campaigns = settings.banners.campaigns;
   const campaignCount = Math.max(campaigns.length, 1);
   const branches = settings.institution.branches;
   const activeBranchDetails =
     branches.find((branch) => branch.id === activeBranchId) ?? branches[0];
   const activeBranch = activeBranchDetails?.name ?? settings.institution.storeName;
-  const activeBranchAddress = activeBranchDetails?.address || settings.institution.address;
-  const activeBranchPhone = activeBranchDetails?.phone || settings.institution.phone;
-  const activeBranchHours = activeBranchDetails?.hours || settings.institution.hours;
+  const cleanWhatsappDigits = settings.channels.whatsappNumber.replace(/\D/g, '');
+  const whatsappDigits = cleanWhatsappDigits.length >= 10 ? cleanWhatsappDigits : '551140044040';
+  const whatsappUrl = `https://wa.me/${whatsappDigits}`;
 
   useEffect(() => {
     const update = () => setNow(Date.now());
@@ -235,7 +240,7 @@ export default function HomePage({ products }: { products: Product[] }) {
               <MapPin size={19} className="text-emerald-700" />
               <span className="max-w-36">
                 <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Você está comprando em
+                  {venda_online_ativa ? 'Você está comprando em' : 'Unidade selecionada'}
                 </span>
                 <span className="block truncate text-sm font-bold text-slate-800">
                   {activeBranch}
@@ -351,19 +356,57 @@ export default function HomePage({ products }: { products: Product[] }) {
           </button>
           <button
             type="button"
-            onClick={openCart}
-            className="relative flex shrink-0 items-center gap-2 rounded-xl bg-orange-500 px-3 py-2.5 font-bold text-white shadow-sm transition hover:bg-orange-600 sm:px-4"
-            aria-label={`Abrir carrinho, ${cartCount} ${cartCount === 1 ? 'item' : 'itens'}, total ${formatPrice(cartTotal)}`}
+            onClick={openQuickShoppingList}
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-amber-300 bg-amber-100 px-3 py-2.5 text-xs font-extrabold text-amber-950 shadow-2xs transition hover:bg-amber-200 sm:px-3.5"
+            aria-label="Abrir Crie sua Lista de Compras"
           >
-            <ShoppingCart size={20} />
-            <span className="hidden text-sm sm:inline">Carrinho</span>
-            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[10px] font-black text-orange-600">
-              {cartCount}
-            </span>
+            <ClipboardList size={18} className="shrink-0 text-amber-900" />
+            <span className="hidden md:inline">Crie sua Lista</span>
+            {quickListCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-zinc-900 px-1.5 text-[11px] font-black text-amber-300">
+                {quickListCount}
+              </span>
+            )}
           </button>
-          <Link href="/conta" aria-label="Minha conta" className="hidden rounded-xl p-2.5 text-slate-600 transition hover:bg-emerald-50 hover:text-emerald-800 sm:inline-flex">
-            <LogIn size={21} />
-          </Link>
+          {settings.channels.whatsappEnabled && (
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Atendimento via WhatsApp"
+              className="hidden shrink-0 items-center gap-1.5 rounded-xl bg-[#25D366] px-3 py-2.5 text-xs font-extrabold text-white shadow-xs transition hover:brightness-95 lg:inline-flex"
+            >
+              <MessageCircle size={17} />
+              <span>WhatsApp</span>
+            </a>
+          )}
+          {venda_online_ativa ? (
+            <button
+              type="button"
+              onClick={openCart}
+              className="relative flex shrink-0 items-center gap-2.5 rounded-xl bg-red-600 px-3.5 py-2.5 font-extrabold text-white shadow-md ring-1 ring-red-700/20 transition hover:bg-red-700 active:scale-[0.99] sm:px-4"
+              aria-label={`Abrir carrinho, ${cartCount} ${cartCount === 1 ? 'item' : 'itens'}, total ${formatPrice(cartTotal)}`}
+            >
+              <ShoppingCart size={20} className="text-white" />
+              <span className="hidden text-sm tracking-tight sm:inline">Carrinho</span>
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-xs font-black text-red-700 shadow-xs">
+                {cartCount}
+              </span>
+            </button>
+          ) : (
+            <Link
+              href="/lojas"
+              className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 sm:inline-flex"
+            >
+              <Store size={17} className="text-emerald-700" />
+              <span>Consulte na loja física</span>
+            </Link>
+          )}
+          {venda_online_ativa && (
+            <Link href="/conta" aria-label="Minha conta" className="hidden rounded-xl p-2.5 text-slate-600 transition hover:bg-emerald-50 hover:text-emerald-800 sm:inline-flex">
+              <LogIn size={21} />
+            </Link>
+          )}
           <div className="relative order-1 basis-[36%] md:hidden">
             <button
               type="button"
@@ -418,11 +461,24 @@ export default function HomePage({ products }: { products: Product[] }) {
             ))}
             <Link
               href="/panfleto-de-ofertas"
-              className="flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-orange-700 transition hover:bg-orange-50"
+              className="flex shrink-0 items-center gap-2 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-extrabold text-red-700 shadow-2xs transition hover:border-red-300 hover:bg-red-100 hover:text-red-800"
             >
-              <BadgePercent size={18} />
+              <BadgePercent size={18} className="text-red-600" />
               Panfleto de Ofertas
             </Link>
+            <button
+              type="button"
+              onClick={openQuickShoppingList}
+              className="flex shrink-0 items-center gap-2 rounded-full border border-amber-300 bg-amber-100 px-4 py-2 text-sm font-extrabold text-amber-950 shadow-2xs transition hover:border-amber-400 hover:bg-amber-200"
+            >
+              <ClipboardList size={18} className="text-amber-900" />
+              Crie sua Lista de Compras
+              {quickListCount > 0 && (
+                <span className="rounded-full bg-zinc-900 px-1.5 py-0.5 text-[11px] font-black text-amber-300">
+                  {quickListCount}
+                </span>
+              )}
+            </button>
             <Link
               href="/receitas"
               className="flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-emerald-50 hover:text-emerald-800"
@@ -430,12 +486,14 @@ export default function HomePage({ products }: { products: Product[] }) {
               <Leaf size={18} />
               Receitas
             </Link>
-            <Link
-              href="/conta"
-              className="flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              Minha conta
-            </Link>
+            {venda_online_ativa && (
+              <Link
+                href="/conta"
+                className="flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                Minha conta
+              </Link>
+            )}
           </div>
         </nav>
       </header>
@@ -480,7 +538,7 @@ export default function HomePage({ products }: { products: Product[] }) {
               </p>
               <a
                 href="#vitrines"
-                className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-orange-400"
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-red-500"
               >
                 {currentCampaign.button}
                 <ArrowRight size={17} />
@@ -541,6 +599,8 @@ export default function HomePage({ products }: { products: Product[] }) {
         favorites={favorites}
         onFavorite={toggleFavorite}
       />
+
+      <ShoppingListCalloutBanner />
 
       <CategoryShowcase
         selected={selectedDepartment}
@@ -642,135 +702,21 @@ export default function HomePage({ products }: { products: Product[] }) {
 
       <section className="border-y border-emerald-100 bg-emerald-50/70">
         <div className="mx-auto grid max-w-7xl gap-4 px-4 py-8 sm:grid-cols-3 lg:px-8">
-          <Benefit icon={Truck} title="Entrega com carinho" text="Receba suas compras fresquinhas no mesmo dia." />
-          <Benefit icon={ShieldCheck} title="Compra segura" text="Seus dados protegidos em todas as etapas." />
-          <Benefit icon={Leaf} title="Fresquinho de verdade" text="Seleção diária de produtores parceiros." />
+          {venda_online_ativa ? (
+            <>
+              <Benefit icon={Truck} title="Entrega com carinho" text="Receba suas compras fresquinhas no mesmo dia." />
+              <Benefit icon={ShieldCheck} title="Compra segura" text="Seus dados protegidos em todas as etapas." />
+              <Benefit icon={Leaf} title="Fresquinho de verdade" text="Seleção diária de produtores parceiros." />
+            </>
+          ) : (
+            <>
+              <Benefit icon={Store} title="Catálogo de ofertas" text="Confira preços e promoções atualizados das nossas unidades." />
+              <Benefit icon={BadgePercent} title="Economia toda semana" text="Acompanhe o panfleto digital e ofertas relâmpago." />
+              <Benefit icon={Leaf} title="Fresquinho de verdade" text="Seleção diária de produtores parceiros na loja física." />
+            </>
+          )}
         </div>
       </section>
-
-      <footer className="border-t border-zinc-800 bg-zinc-950 text-zinc-100">
-        <div className="mx-auto grid max-w-7xl items-start gap-10 px-4 py-12 sm:grid-cols-2 lg:grid-cols-4 lg:px-8">
-          <div className="space-y-4">
-            <BrandLogo inverted />
-            <p className="m-0 max-w-xs text-sm leading-relaxed text-zinc-400">
-              {settings.institution.aboutText}
-            </p>
-            <div className="flex items-center gap-1 text-yellow-400" aria-label="Avaliação 4,9 de 5">
-              {Array.from({ length: 5 }, (_, index) => (
-                <Star key={index} size={15} fill="currentColor" />
-              ))}
-              <span className="ml-2 text-xs font-medium text-zinc-400">
-                4,9 de 5
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h2 className="m-0 text-sm font-bold tracking-wide text-white">A sua loja</h2>
-            <p className="m-0 flex items-start gap-2.5 text-sm leading-relaxed text-zinc-400">
-              <MapPin size={16} className="mt-0.5 shrink-0 text-zinc-500" />
-              <span>{activeBranchAddress}</span>
-            </p>
-            <p className="m-0 flex items-start gap-2.5 text-sm leading-relaxed text-zinc-400">
-              <Clock3 size={16} className="mt-0.5 shrink-0 text-zinc-500" />
-              <span>{activeBranchHours}</span>
-            </p>
-            <button
-              type="button"
-              onClick={() => setBranchMenuOpen(true)}
-              className="inline-flex items-center gap-1.5 pt-1 text-sm font-semibold text-zinc-300 transition-colors hover:text-white"
-            >
-              Trocar de filial <ArrowRight size={14} />
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            <h2 className="m-0 text-sm font-bold tracking-wide text-white">Entrega e ajuda</h2>
-            <p className="m-0 text-sm leading-relaxed text-zinc-400">
-              Entregamos de segunda a sábado, das 8h às 21h. Pedidos feitos até
-              as 17h podem chegar no mesmo dia.
-            </p>
-            <div className="space-y-2 pt-1">
-              <a
-                href={`tel:${activeBranchPhone.replace(/\D/g, '')}`}
-                className="inline-flex items-center gap-2.5 text-sm font-semibold text-zinc-300 transition-colors hover:text-white"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-zinc-400">
-                  <MessageCircle size={15} />
-                </span>
-                {activeBranchPhone}
-              </a>
-              <a
-                href={`mailto:${activeBranchDetails?.email || settings.institution.email}`}
-                className="block break-all text-sm text-zinc-400 transition-colors hover:text-white"
-              >
-                {activeBranchDetails?.email || settings.institution.email}
-              </a>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <h2 className="m-0 text-sm font-bold tracking-wide text-white">Compra tranquila</h2>
-            <div className="flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300">
-                <ShieldCheck size={14} className="shrink-0 text-zinc-400" />
-                Site seguro
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300">
-                <Package size={14} className="shrink-0 text-zinc-400" />
-                Entrega garantida
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300">
-                <BadgePercent size={14} className="shrink-0 text-zinc-400" />
-                Preço justo
-              </span>
-            </div>
-
-            <nav aria-label="Links institucionais do rodapé" className="flex flex-wrap gap-x-4 gap-y-2 pt-1 text-xs font-medium text-zinc-400">
-              <Link href="/sobre" className="transition-colors hover:text-white">Quem somos</Link>
-              <Link href="/lojas" className="transition-colors hover:text-white">Lojas</Link>
-              <Link href="/clube" className="transition-colors hover:text-white">Clube</Link>
-              <Link href="/trabalhe-conosco" className="transition-colors hover:text-white">Trabalhe conosco</Link>
-              <Link href="/privacidade" className="transition-colors hover:text-white">Privacidade</Link>
-              <Link href="/bio" className="transition-colors hover:text-white">Links oficiais</Link>
-              <Link href="/receitas" className="transition-colors hover:text-white">Receitas</Link>
-            </nav>
-
-            <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium text-zinc-400">
-              {isSafeWebUrl(settings.institution.instagram) && <a href={settings.institution.instagram} target="_blank" rel="noreferrer" className="transition-colors hover:text-white">Instagram</a>}
-              {isSafeWebUrl(settings.institution.facebook) && <a href={settings.institution.facebook} target="_blank" rel="noreferrer" className="transition-colors hover:text-white">Facebook</a>}
-              {settings.institution.socialLinks.filter((link) => isSafeWebUrl(link.url)).map((link) => (
-                <a key={link.id} href={link.url} target="_blank" rel="noreferrer" className="transition-colors hover:text-white">{link.name}</a>
-              ))}
-              {settings.channels.ifoodEnabled && isSafeWebUrl(settings.channels.ifoodUrl) && <a href={settings.channels.ifoodUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-white">Peça pelo iFood</a>}
-              {isSafeWebUrl(settings.channels.offersGroupUrl) && <a href={settings.channels.offersGroupUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-white">Ofertas no WhatsApp</a>}
-            </div>
-
-            {settings.pwa.enabled && (
-              <div className="flex flex-wrap gap-2 pt-1">
-                {settings.pwa.googlePlay.enabled && isSafeWebUrl(settings.pwa.googlePlay.url) && (
-                  <a href={settings.pwa.googlePlay.url} target="_blank" rel="noreferrer" className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:border-zinc-500 hover:text-white">Google Play</a>
-                )}
-                {settings.pwa.appStore.enabled && isSafeWebUrl(settings.pwa.appStore.url) && (
-                  <a href={settings.pwa.appStore.url} target="_blank" rel="noreferrer" className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:border-zinc-500 hover:text-white">App Store</a>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="border-t border-zinc-800/80">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 text-xs text-zinc-500 lg:px-8">
-            <p className="m-0">
-              © 2026 {settings.institution.storeName}. Todos os direitos reservados.
-            </p>
-            <Link href="/admin" className="inline-flex items-center gap-1 font-medium text-zinc-500 transition-colors hover:text-zinc-300">
-              Acesso do gestor <ArrowRight size={11} />
-            </Link>
-          </div>
-        </div>
-      </footer>
-
     </main>
   );
 }
@@ -788,7 +734,7 @@ function ProductCard({
   onFavorite: () => void;
   onAdd: () => void;
 }) {
-  const { settings } = useSiteSettings();
+  const { venda_online_ativa } = useOnlineSales();
   const discount = product.oldPrice
     ? Math.round((1 - product.price / product.oldPrice) * 100)
     : null;
@@ -811,13 +757,13 @@ function ProductCard({
           />
         </Link>
         {discount && (
-          <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-orange-500 px-2.5 py-1 text-[10px] font-black text-white shadow-sm sm:left-3 sm:top-3 sm:text-xs">
+          <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-black text-white shadow-sm sm:left-3 sm:top-3 sm:text-xs">
             <BadgePercent size={13} />
             -{discount}%
           </span>
         )}
         {product.badge && (
-          <span className="absolute bottom-2 left-2 max-w-[75%] truncate rounded-md bg-white/90 px-2 py-1 text-[9px] font-bold text-emerald-800 backdrop-blur-sm sm:bottom-3 sm:left-3 sm:text-[10px]">
+          <span className="absolute bottom-2 left-2 max-w-[75%] truncate rounded-md bg-zinc-900/90 px-2 py-1 text-[9px] font-bold text-white backdrop-blur-sm sm:bottom-3 sm:left-3 sm:text-[10px]">
             {product.badge}
           </span>
         )}
@@ -845,7 +791,7 @@ function ProductCard({
         <p className="mb-3 mt-0 text-[10px] text-slate-500 sm:text-xs">{product.unit}</p>
         {product.flashOfferEndsAt && (
           <div
-            className="mb-3 flex items-center justify-between gap-1.5 rounded-xl border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-[11px] font-bold text-orange-700"
+            className="mb-3 flex items-center justify-between gap-2 rounded-xl bg-red-600 px-3 py-2 text-white shadow-sm"
             aria-label={
               countdown
                 ? `Oferta de ${product.name} termina em ${countdown.hours} horas, ${countdown.minutes} minutos e ${countdown.seconds} segundos`
@@ -853,11 +799,11 @@ function ProductCard({
             }
             aria-live="off"
           >
-            <span className="inline-flex items-center gap-1">
-              <Clock3 size={12} className="shrink-0 text-orange-600" />
+            <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-white">
+              <Clock3 size={15} className="shrink-0 text-yellow-300" />
               <span>Termina em</span>
             </span>
-            <span className="rounded bg-orange-600 px-1.5 py-0.5 font-mono text-[10px] font-black tracking-wider text-white sm:text-[11px]">
+            <span className="rounded-lg bg-zinc-950/90 px-2.5 py-1 font-mono text-xs font-black tracking-widest text-white shadow-xs sm:text-sm">
               {countdown ? countdown.formatted : '--:--:--'}
             </span>
           </div>
@@ -873,7 +819,7 @@ function ProductCard({
               {formatPrice(product.price)}
             </p>
           </div>
-          {settings.commerceEnabled ? (
+          {venda_online_ativa ? (
             <button
               type="button"
               onClick={onAdd}
@@ -882,7 +828,13 @@ function ProductCard({
             >
               <Plus size={19} />
             </button>
-          ) : <span className="text-xs font-semibold text-slate-500">Vitrine</span>}
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600">
+              <Store size={13} className="shrink-0 text-emerald-700" />
+              <span className="hidden sm:inline">Consulte na loja</span>
+              <span className="sm:hidden">Na loja</span>
+            </span>
+          )}
         </div>
       </div>
     </article>

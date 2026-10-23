@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { Store } from 'lucide-react';
 import BrandLogo from '../brand-logo';
-import { useSiteSettings } from '../admin-data-provider';
+import { useOnlineSales } from '../admin-data-provider';
 
 interface Product {
   id: string | number;
@@ -22,6 +23,7 @@ interface CartItem {
 interface StorefrontProps {
   storeName: string;
   products: Product[];
+  initialOnlineSales?: boolean;
 }
 
 const priceFormatter = new Intl.NumberFormat('pt-BR', {
@@ -39,8 +41,9 @@ function formatPrice(price: number | string) {
 export default function Storefront({
   storeName,
   products,
+  initialOnlineSales,
 }: StorefrontProps) {
-  const { settings } = useSiteSettings();
+  const { venda_online_ativa } = useOnlineSales(initialOnlineSales);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const itemCount = cart.reduce((total, item) => total + item.quantity, 0);
@@ -50,6 +53,7 @@ export default function Storefront({
   );
 
   function addToCart(product: Product) {
+    if (!venda_online_ativa) return;
     setCart((currentCart) => {
       const existingItem = currentCart.find(
         (item) => item.product.id === product.id,
@@ -90,19 +94,26 @@ export default function Storefront({
       <header className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           <BrandLogo name={storeName} compact />
-          {settings.commerceEnabled && <button
-            type="button"
-            onClick={() => setIsCartOpen(true)}
-            aria-label={`Abrir carrinho, ${itemCount} itens, total ${formatPrice(cartTotal)}`}
-            className="rounded-xl border border-emerald-400/40 bg-slate-800 px-4 py-2 text-left transition hover:border-emerald-400"
-          >
-            <span className="block font-semibold">
-              Carrinho <span aria-hidden="true">({itemCount})</span>
+          {venda_online_ativa ? (
+            <button
+              type="button"
+              onClick={() => setIsCartOpen(true)}
+              aria-label={`Abrir carrinho, ${itemCount} itens, total ${formatPrice(cartTotal)}`}
+              className="rounded-xl bg-red-600 px-4 py-2 text-left text-white shadow-sm transition hover:bg-red-700"
+            >
+              <span className="block font-semibold">
+                Carrinho <span aria-hidden="true">({itemCount})</span>
+              </span>
+              <span className="text-sm text-white/90">
+                {formatPrice(cartTotal)}
+              </span>
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-bold text-slate-700">
+              <Store size={15} className="text-emerald-700" />
+              Catálogo de ofertas
             </span>
-            <span className="text-sm text-emerald-400">
-              {formatPrice(cartTotal)}
-            </span>
-          </button>}
+          )}
         </div>
       </header>
 
@@ -112,9 +123,9 @@ export default function Storefront({
             Bem-vindo ao {storeName}!
           </h2>
           <p className="m-0 text-slate-400">
-            {settings.commerceEnabled
-              ? 'Confira os produtos disponíveis na nossa loja.'
-              : 'Confira nosso catálogo digital. As compras online estão temporariamente pausadas.'}
+            {venda_online_ativa
+              ? 'Confira os produtos disponíveis na nossa loja e faça seu pedido online.'
+              : 'Confira nosso catálogo digital de ofertas. Consulte a disponibilidade na loja física.'}
           </p>
         </section>
 
@@ -169,13 +180,20 @@ export default function Storefront({
                         <p className="m-0 text-lg font-bold text-emerald-400">
                           {formatPrice(product.price)}
                         </p>
-                        {settings.commerceEnabled && <button
-                          type="button"
-                          onClick={() => addToCart(product)}
-                          className="rounded-lg bg-emerald-400 px-4 py-2 font-bold text-slate-950 transition hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
-                        >
-                          Adicionar
-                        </button>}
+                        {venda_online_ativa ? (
+                          <button
+                            type="button"
+                            onClick={() => addToCart(product)}
+                            className="rounded-lg bg-emerald-400 px-4 py-2 font-bold text-slate-950 transition hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+                          >
+                            Adicionar
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-300">
+                            <Store size={14} className="text-emerald-400" />
+                            Consulte na loja física
+                          </span>
+                        )}
                       </div>
                     </div>
                   </li>
@@ -186,7 +204,7 @@ export default function Storefront({
         </section>
       </main>
 
-      {isCartOpen && (
+      {isCartOpen && venda_online_ativa && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <button
             type="button"

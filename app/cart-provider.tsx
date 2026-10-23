@@ -10,7 +10,7 @@ import {
 } from 'react';
 import type { CartItem, CatalogProduct } from '@/lib/catalog-types';
 import CartDrawer from './cart-drawer';
-import { useSiteSettings } from './admin-data-provider';
+import { useOnlineSales } from './admin-data-provider';
 
 interface CartContextValue {
   cart: CartItem[];
@@ -28,7 +28,7 @@ const CartContext = createContext<CartContextValue | null>(null);
 const CART_STORAGE_KEY = 'verdevale-cart-v1';
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const { settings } = useSiteSettings();
+  const { venda_online_ativa } = useOnlineSales();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -71,12 +71,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [cart, isLoaded]);
 
-  const openCart = useCallback(() => setIsCartOpen(true), []);
+  const openCart = useCallback(() => {
+    if (!venda_online_ativa) return;
+    setIsCartOpen(true);
+  }, [venda_online_ativa]);
   const closeCart = useCallback(() => setIsCartOpen(false), []);
 
   const addToCart = useCallback(
     (product: CatalogProduct, quantity = 1) => {
-      if (!settings.commerceEnabled) return;
+      if (!venda_online_ativa) return;
       setCart((current) => {
         const existing = current.find(
           (item) => item.product.id === product.id,
@@ -90,7 +93,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           : [...current, { product, quantity }];
       });
     },
-    [settings.commerceEnabled],
+    [venda_online_ativa],
   );
 
   const changeQuantity = useCallback((productId: string, change: number) => {
@@ -148,7 +151,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   return (
     <CartContext.Provider value={value}>
       {children}
-      <CartDrawer open={isCartOpen} onClose={closeCart} />
+      <CartDrawer open={isCartOpen && venda_online_ativa} onClose={closeCart} />
     </CartContext.Provider>
   );
 }

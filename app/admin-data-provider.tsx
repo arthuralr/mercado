@@ -240,7 +240,7 @@ export function AdminDataProvider({
     let active = true;
     void supabaseBrowser
       .from(SITE_SETTINGS_TABLE)
-      .select('dados')
+      .select('*')
       .eq('id', 'principal')
       .maybeSingle()
       .then(({ data, error }) => {
@@ -249,13 +249,20 @@ export function AdminDataProvider({
           if (active) setSettingsReady(true);
           return;
         }
-        if (active && data) setSettings(mergeSiteSettings(data.dados));
+        if (active && data) {
+          setSettings(
+            mergeSiteSettings(
+              data.dados,
+              (data as Record<string, unknown> | null) ?? null,
+            ),
+          );
+        }
         if (active) setSettingsReady(true);
       });
     const refreshSettings = () => {
       void supabaseBrowser
         .from(SITE_SETTINGS_TABLE)
-        .select('dados')
+        .select('*')
         .eq('id', 'principal')
         .maybeSingle()
         .then(({ data, error }) => {
@@ -263,7 +270,14 @@ export function AdminDataProvider({
             console.error('Não foi possível atualizar as configurações públicas.', error);
             return;
           }
-          if (data) setSettings(mergeSiteSettings(data.dados));
+          if (data) {
+            setSettings(
+              mergeSiteSettings(
+                data.dados,
+                (data as Record<string, unknown> | null) ?? null,
+              ),
+            );
+          }
         });
     };
     const settingsChannel = supabaseBrowser
@@ -383,7 +397,32 @@ export function useAdminData() {
 
 export function useSiteSettings() {
   const { settings, settingsReady, updateSettings } = useContext(AdminDataContext);
-  return { settings, settingsReady, updateSettings };
+  const vendaOnlineAtiva = Boolean(
+    settings.venda_online_ativa ?? settings.commerceEnabled,
+  );
+  return {
+    settings,
+    settingsReady,
+    updateSettings,
+    venda_online_ativa: vendaOnlineAtiva,
+    vendaOnlineAtiva,
+  };
+}
+
+export function useOnlineSales(overrideValue?: boolean) {
+  const { settings, settingsReady, updateSettings } = useContext(AdminDataContext);
+  const vendaOnlineAtiva =
+    typeof overrideValue === 'boolean'
+      ? overrideValue
+      : Boolean(settings.venda_online_ativa ?? settings.commerceEnabled);
+  return {
+    venda_online_ativa: vendaOnlineAtiva,
+    vendaOnlineAtiva,
+    commerceEnabled: vendaOnlineAtiva,
+    isCatalogMode: !vendaOnlineAtiva,
+    settingsReady,
+    updateSettings,
+  };
 }
 
 export function useManagedProducts<T extends CatalogProduct>(products: T[]): T[] {

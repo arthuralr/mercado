@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ChefHat, Check, Clock3, Plus, Users } from 'lucide-react';
+import { ChefHat, Check, Clock3, Plus, Store, Users } from 'lucide-react';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import { dailyRecipes, type Recipe } from '@/lib/recipes';
 import { useShoppingCart } from './cart-provider';
-import { useSiteSettings } from './admin-data-provider';
+import { useOnlineSales } from './admin-data-provider';
 
 function normalize(value: string) {
   return value
@@ -38,7 +38,7 @@ function RecipeCard({
   products: CatalogProduct[];
 }) {
   const { addToCart } = useShoppingCart();
-  const { settings } = useSiteSettings();
+  const { venda_online_ativa } = useOnlineSales();
   const [feedback, setFeedback] = useState('');
   const ingredientMatches = useMemo(
     () =>
@@ -55,7 +55,7 @@ function RecipeCard({
   );
 
   function addRecipeIngredients() {
-    if (!settings.commerceEnabled || !availableIngredients.length) return;
+    if (!venda_online_ativa || !availableIngredients.length) return;
     for (const { ingredient, product } of availableIngredients) {
       addToCart(product, ingredient.quantity);
     }
@@ -130,24 +130,28 @@ function RecipeCard({
           ))}
         </ol>
 
-        {!settings.commerceEnabled && (
-          <p className="mb-3 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-            As compras online estão pausadas. Consulte o catálogo e fale com a loja.
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={addRecipeIngredients}
-          disabled={!settings.commerceEnabled || !availableIngredients.length}
-          className="mt-auto inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--brand-primary)] px-4 py-3 text-center text-sm font-bold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {feedback.startsWith('Todos') ? <Check size={17} /> : <Plus size={17} />}
-          {buttonLabel}
-        </button>
-        {feedback && (
-          <p role="status" className="mb-0 mt-3 text-xs leading-5 text-slate-600">
-            {feedback}
-          </p>
+        {venda_online_ativa ? (
+          <>
+            <button
+              type="button"
+              onClick={addRecipeIngredients}
+              disabled={!availableIngredients.length}
+              className="mt-auto inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--brand-primary)] px-4 py-3 text-center text-sm font-bold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {feedback.startsWith('Todos') ? <Check size={17} /> : <Plus size={17} />}
+              {buttonLabel}
+            </button>
+            {feedback && (
+              <p role="status" className="mb-0 mt-3 text-xs leading-5 text-slate-600">
+                {feedback}
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="mt-auto flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs font-bold text-slate-600">
+            <Store size={16} className="shrink-0 text-emerald-700" />
+            <span>Consulte na loja física · Catálogo de ofertas</span>
+          </div>
         )}
       </div>
     </article>
@@ -167,6 +171,8 @@ export default function RecipeSuggestions({
   products: CatalogProduct[];
   compact?: boolean;
 }) {
+  const { venda_online_ativa } = useOnlineSales();
+
   return (
     <section
       aria-labelledby="daily-recipes-title"
@@ -181,8 +187,9 @@ export default function RecipeSuggestions({
             Receitas e Sugestões do Dia
           </h1>
           <p className="mb-0 mt-3 max-w-2xl text-sm leading-6 text-emerald-50/85 sm:text-base">
-            Inspire-se com receitas práticas, confira os ingredientes no catálogo
-            e adicione tudo o que estiver disponível à sua sacola.
+            {venda_online_ativa
+              ? 'Inspire-se com receitas práticas, confira os ingredientes no catálogo e adicione tudo o que estiver disponível à sua sacola.'
+              : 'Inspire-se com receitas práticas e confira a disponibilidade dos ingredientes no nosso catálogo de ofertas.'}
           </p>
         </header>
       )}

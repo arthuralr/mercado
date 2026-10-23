@@ -31,11 +31,19 @@ interface CatalogProduct {
   imagem_url: string | null;
 }
 
+interface StoreRow {
+  name: string;
+  slug?: string;
+  venda_online_ativa?: boolean | null;
+  commerce_enabled?: boolean | null;
+}
+
 const getStoreBySlug = cache(async (storeSlug: string) => {
   const { data, error } = await supabase
     .from('stores')
-    .select('name')
+    .select('*')
     .eq('slug', storeSlug)
+    .returns<StoreRow[]>()
     .maybeSingle();
   if (error) {
     throw new Error(`Não foi possível carregar a loja "${storeSlug}": ${error.message}`);
@@ -51,7 +59,7 @@ export async function generateMetadata({
   if (!store) notFound();
   return getLocalPageMetadata({
     title: `Supermercado ${store.name}`,
-    description: `Confira o catálogo, as ofertas de hortifrúti e açougue, e as opções de entrega do ${store.name}.`,
+    description: `Confira o catálogo, as ofertas de hortifrúti e açougue do ${store.name}.`,
     path: `/${encodeURIComponent(storeSlug)}`,
     storeName: store.name,
   });
@@ -80,5 +88,18 @@ export default async function StoreHomePage({ params }: PageProps) {
     image_url: product.imagem_url,
   }));
 
-  return <Storefront storeName={store.name} products={products} />;
+  const storeOnlineSales =
+    typeof store.venda_online_ativa === 'boolean'
+      ? store.venda_online_ativa
+      : typeof store.commerce_enabled === 'boolean'
+        ? store.commerce_enabled
+        : undefined;
+
+  return (
+    <Storefront
+      storeName={store.name}
+      products={products}
+      initialOnlineSales={storeOnlineSales}
+    />
+  );
 }

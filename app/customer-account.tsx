@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { Clipboard, ListPlus, LogIn, LogOut, MessageCircle, Plus, ShoppingBag, Trash2 } from 'lucide-react';
+import { Clipboard, ClipboardList, ListPlus, LogIn, LogOut, MessageCircle, Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import { useShoppingCart } from './cart-provider';
 import { useSiteSettings } from './admin-data-provider';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+import { openQuickShoppingList } from './shopping-list-tool';
 
 interface CustomerListItem {
   product_id: string;
@@ -44,7 +45,7 @@ export default function CustomerAccount({ products }: { products: CatalogProduct
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const { addToCart } = useShoppingCart();
-  const { settings } = useSiteSettings();
+  const { settings, venda_online_ativa } = useSiteSettings();
   const storeName = settings.institution.storeName.trim() || 'Supermercado';
 
   const selectedList = lists.find((list) => list.id === selectedListId) ?? null;
@@ -208,6 +209,51 @@ export default function CustomerAccount({ products }: { products: CatalogProduct
     }
   }
 
+  if (!venda_online_ativa) {
+    return (
+      <main className="min-h-screen bg-[#f7f8f4] px-4 py-10 text-slate-800">
+        <div className="mx-auto max-w-2xl space-y-6">
+          <header className="rounded-3xl bg-emerald-900 p-6 text-white sm:p-8">
+            <Link href="/" className="text-sm font-bold text-emerald-100 hover:underline">
+              ← Voltar ao catálogo
+            </Link>
+            <h1 className="mb-2 mt-5 text-2xl font-black sm:text-3xl">
+              Catálogo Digital · {storeName}
+            </h1>
+            <p className="m-0 text-sm leading-6 text-emerald-100">
+              Você não precisa de login para montar sua lista de compras e conferir nossas ofertas.
+            </p>
+          </header>
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+            <ClipboardList size={36} className="mx-auto text-emerald-700" />
+            <h2 className="mb-2 mt-3 text-xl font-black text-slate-900">
+              Crie sua Lista de Compras sem login
+            </h2>
+            <p className="mx-auto mb-5 max-w-md text-sm leading-6 text-slate-600">
+              Adicione os produtos que deseja, baixe a lista no celular, copie o texto ou compartilhe diretamente no seu WhatsApp com um clique.
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                onClick={openQuickShoppingList}
+                className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-3 text-sm font-black text-zinc-950 shadow-sm transition hover:bg-amber-300"
+              >
+                <ClipboardList size={18} />
+                Abrir Crie sua Lista de Compras
+              </button>
+              <Link
+                href="/catalogo"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+              >
+                Ver ofertas do catálogo
+              </Link>
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
   if (!authReady) return <main className="mx-auto max-w-5xl px-4 py-16">Carregando sua conta…</main>;
 
   return (
@@ -216,7 +262,11 @@ export default function CustomerAccount({ products }: { products: CatalogProduct
         <header className="rounded-3xl bg-emerald-900 p-6 text-white sm:p-8">
           <Link href="/" className="text-sm font-bold text-emerald-100 hover:underline">← Voltar à loja</Link>
           <h1 className="mb-2 mt-5 text-3xl font-black">Minha conta · {storeName}</h1>
-          <p className="m-0 max-w-2xl text-sm leading-6 text-emerald-100">Acesse seu histórico de pedidos e mantenha listas de compras sincronizadas com sua conta.</p>
+          <p className="m-0 max-w-2xl text-sm leading-6 text-emerald-100">
+            {venda_online_ativa
+              ? 'Acesse seu histórico de pedidos e mantenha listas de compras sincronizadas com sua conta.'
+              : 'Mantenha suas listas de compras sincronizadas com sua conta para consultar na loja física.'}
+          </p>
         </header>
 
         {!userId ? (
@@ -269,7 +319,9 @@ export default function CustomerAccount({ products }: { products: CatalogProduct
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => void copyList(selectedList)} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 px-4 py-2.5 text-sm font-bold text-emerald-800"><Clipboard size={16} />Gerar cópia da lista</button>
                     <a href={`https://wa.me/?text=${encodeURIComponent(listMessage(selectedList))}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-bold text-white"><MessageCircle size={16} />Compartilhar no WhatsApp</a>
-                    <button type="button" onClick={() => selectedList.itens_json.forEach((item) => { const product = productsById.get(item.product_id); if (product) addToCart(product, item.quantity); })} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white"><ShoppingBag size={16} />Carregar no carrinho</button>
+                    {venda_online_ativa && (
+                      <button type="button" onClick={() => selectedList.itens_json.forEach((item) => { const product = productsById.get(item.product_id); if (product) addToCart(product, item.quantity); })} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700"><ShoppingBag size={16} />Carregar no carrinho</button>
+                    )}
                     <button type="button" onClick={() => void deleteList(selectedList)} className="rounded-xl px-4 py-2.5 text-sm font-bold text-rose-700 hover:bg-rose-50">Excluir lista</button>
                   </div>
                 </>
@@ -277,17 +329,19 @@ export default function CustomerAccount({ products }: { products: CatalogProduct
               {!lists.length && <p className="m-0 rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">Nenhuma lista criada ainda.</p>}
             </section>
 
-            <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-              <h2 className="m-0 flex items-center gap-2 text-xl font-black"><ShoppingBag size={21} className="text-emerald-700" />Histórico de compras</h2>
-              {busy && <p role="status" className="text-sm text-slate-500">Carregando pedidos e listas…</p>}
-              {!busy && orders.length === 0 && <p className="m-0 text-sm text-slate-500">Seus pedidos confirmados aparecerão aqui.</p>}
-              {orders.map((order) => (
-                <article key={order.id} className="rounded-xl bg-slate-50 p-4">
-                  <div className="flex flex-wrap justify-between gap-2"><strong>{new Date(order.criado_em).toLocaleString('pt-BR')}</strong><span className="font-bold text-emerald-800">{money.format(Number(order.total))} · {order.status}</span></div>
-                  <p className="mb-0 mt-2 text-sm text-slate-600">{order.itens_json.map((item) => `${item.quantidade} × ${item.nome}`).join(' · ')}</p>
-                </article>
-              ))}
-            </section>
+            {(venda_online_ativa || orders.length > 0) && (
+              <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                <h2 className="m-0 flex items-center gap-2 text-xl font-black"><ShoppingBag size={21} className="text-emerald-700" />Histórico de compras</h2>
+                {busy && <p role="status" className="text-sm text-slate-500">Carregando pedidos e listas…</p>}
+                {!busy && orders.length === 0 && <p className="m-0 text-sm text-slate-500">Seus pedidos confirmados aparecerão aqui.</p>}
+                {orders.map((order) => (
+                  <article key={order.id} className="rounded-xl bg-slate-50 p-4">
+                    <div className="flex flex-wrap justify-between gap-2"><strong>{new Date(order.criado_em).toLocaleString('pt-BR')}</strong><span className="font-bold text-emerald-800">{money.format(Number(order.total))} · {order.status}</span></div>
+                    <p className="mb-0 mt-2 text-sm text-slate-600">{order.itens_json.map((item) => `${item.quantidade} × ${item.nome}`).join(' · ')}</p>
+                  </article>
+                ))}
+              </section>
+            )}
           </>
         )}
 

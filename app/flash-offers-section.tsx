@@ -155,32 +155,34 @@ export default function FlashOffersSection({
       aria-labelledby="flash-offers-title"
       className="mx-auto max-w-7xl px-4 pb-4 pt-10 lg:px-8"
     >
-      <div className="rounded-3xl border border-orange-200/80 bg-gradient-to-br from-orange-50 via-amber-50/50 to-white p-5 shadow-sm sm:p-8">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="rounded-3xl border-2 border-red-200 bg-gradient-to-br from-red-50/70 via-white to-white p-5 shadow-md sm:p-8">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-red-100 pb-5">
           <div>
-            <span className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-orange-500 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-white shadow-sm">
-              <Zap size={14} fill="currentColor" />
+            <span className="mb-2.5 inline-flex items-center gap-1.5 rounded-full bg-red-600 px-3.5 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-white shadow-sm">
+              <Zap size={14} className="text-yellow-300" fill="currentColor" />
               Em destaque · Só por tempo limitado
             </span>
             <h2
               id="flash-offers-title"
-              className="m-0 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl"
+              className="m-0 text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl"
             >
               Ofertas Relâmpago
             </h2>
-            <p className="mb-0 mt-1 text-sm text-slate-600">
+            <p className="mb-0 mt-1 text-sm font-medium text-zinc-600">
               Aproveite descontos especiais antes que o cronômetro de cada oferta chegue ao fim.
             </p>
           </div>
           {nearestCountdown && (
             <div
-              className="flex items-center gap-2 rounded-2xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-bold text-orange-700 shadow-sm"
+              className="flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white shadow-md ring-1 ring-zinc-800"
               aria-label={`A oferta mais próxima termina em ${nearestCountdown.hours} horas, ${nearestCountdown.minutes} minutos e ${nearestCountdown.seconds} segundos`}
               aria-live="off"
             >
-              <Clock3 size={17} className="text-orange-600" />
-              <span className="hidden sm:inline">Próximo encerramento</span>
-              <span className="rounded-lg bg-orange-600 px-2.5 py-1 font-mono text-white">
+              <Clock3 size={18} className="shrink-0 text-red-400" />
+              <span className="hidden text-xs font-extrabold uppercase tracking-wider text-zinc-300 sm:inline">
+                Próximo encerramento
+              </span>
+              <span className="rounded-xl bg-red-600 px-3 py-1.5 font-mono text-base font-black tracking-widest text-white shadow-xs sm:text-lg">
                 {nearestCountdown.formatted}
               </span>
             </div>

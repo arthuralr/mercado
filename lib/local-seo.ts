@@ -15,7 +15,7 @@ export async function getCachedSiteSettings() {
 
   const { data, error } = await supabase
     .from(SITE_SETTINGS_TABLE)
-    .select('dados')
+    .select('*')
     .eq('id', 'principal')
     .maybeSingle();
 
@@ -23,7 +23,10 @@ export async function getCachedSiteSettings() {
     console.error('Não foi possível carregar as configurações para SEO local.', error);
   }
 
-  return mergeSiteSettings(data?.dados ?? defaultSiteSettings);
+  return mergeSiteSettings(
+    data?.dados ?? defaultSiteSettings,
+    (data as Record<string, unknown> | null) ?? null,
+  );
 }
 
 export const getLocalSeoContext = cache(async () => {

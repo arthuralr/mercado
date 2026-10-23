@@ -98,17 +98,33 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
     setSaving(true);
     setMessage('');
     try {
+      const onlineSalesEnabled = Boolean(
+        draft.venda_online_ativa ?? draft.commerceEnabled,
+      );
+      const normalizedDraft: SiteSettings = {
+        ...draft,
+        venda_online_ativa: onlineSalesEnabled,
+        commerceEnabled: onlineSalesEnabled,
+      };
+      const nowIso = new Date().toISOString();
       const { error } = await supabaseBrowser
         .from(SITE_SETTINGS_TABLE)
         .upsert(
-          { id: 'principal', dados: draft, atualizado_em: new Date().toISOString() },
+          { id: 'principal', dados: normalizedDraft, atualizado_em: nowIso },
           { onConflict: 'id' },
         );
       if (error) {
         setMessage(`Não foi possível salvar as configurações: ${error.message}`);
         return;
       }
-      updateSettings(draft);
+      void supabaseBrowser
+        .from(SITE_SETTINGS_TABLE)
+        .update({ venda_online_ativa: onlineSalesEnabled })
+        .eq('id', 'principal')
+        .then(() => undefined);
+
+      setDraft(normalizedDraft);
+      updateSettings(normalizedDraft);
       window.dispatchEvent(new Event('site-settings-changed'));
       await revalidateSiteSettings().catch(() => undefined);
       router.refresh();
@@ -120,6 +136,51 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
           ? `Não foi possível salvar as configurações: ${error.message}`
           : 'Não foi possível salvar as configurações por um erro inesperado.',
       );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleOnlineSalesMode(enabled: boolean) {
+    const nextDraft: SiteSettings = {
+      ...draft,
+      venda_online_ativa: enabled,
+      commerceEnabled: enabled,
+    };
+    setDraft(nextDraft);
+    setSaving(true);
+    setMessage('');
+    try {
+      const nowIso = new Date().toISOString();
+      const { error } = await supabaseBrowser
+        .from(SITE_SETTINGS_TABLE)
+        .upsert(
+          { id: 'principal', dados: nextDraft, atualizado_em: nowIso },
+          { onConflict: 'id' },
+        );
+      if (error) {
+        setMessage(
+          `Modo selecionado localmente, mas não foi possível publicar imediatamente: ${error.message}. Clique em "Salvar e publicar configurações".`,
+        );
+        return;
+      }
+      void supabaseBrowser
+        .from(SITE_SETTINGS_TABLE)
+        .update({ venda_online_ativa: enabled })
+        .eq('id', 'principal')
+        .then(() => undefined);
+
+      updateSettings(nextDraft);
+      window.dispatchEvent(new Event('site-settings-changed'));
+      await revalidateSiteSettings().catch(() => undefined);
+      router.refresh();
+      setMessage(
+        enabled
+          ? 'Versão Com Venda Online ativada com sucesso! O carrinho e o checkout já estão disponíveis no site.'
+          : 'Versão Sem Venda Online (Catálogo / Vitrine) ativada com sucesso! O carrinho e os botões de compra foram ocultados.',
+      );
+    } catch (error) {
+      console.error('Erro ao alternar modo de vendas online.', error);
     } finally {
       setSaving(false);
     }
@@ -462,10 +523,71 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
           </label>
         </div>
       </section>
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="flex items-center gap-2"><Settings2 className="text-emerald-700" size={19} /><h2 className="m-0 text-lg font-black">Vendas e pagamentos</h2></div>
-        <Toggle label="Habilitar compras online" checked={draft.commerceEnabled} onChange={(value) => patch('commerceEnabled', value)} />
-        <p className="m-0 text-xs text-slate-500">Desligado, o site continua como vitrine e panfleto de ofertas, sem adicionar produtos nem finalizar pedidos.</p>
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Settings2 className="text-emerald-700" size={19} />
+            <h2 className="m-0 text-lg font-black">Versão comercial e pagamentos</h2>
+          </div>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold ${
+              Boolean(draft.venda_online_ativa ?? draft.commerceEnabled)
+                ? 'bg-emerald-100 text-emerald-900'
+                : 'bg-amber-100 text-amber-900'
+            }`}
+          >
+            {Boolean(draft.venda_online_ativa ?? draft.commerceEnabled)
+              ? 'Ativo: Com Venda Online (E-commerce)'
+              : 'Ativo: Sem Venda Online (Catálogo / Vitrine)'}
+          </span>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void toggleOnlineSalesMode(true)}
+            className={`flex flex-col items-start rounded-2xl border-2 p-4 text-left transition ${
+              Boolean(draft.venda_online_ativa ?? draft.commerceEnabled)
+                ? 'border-emerald-700 bg-emerald-50/70 shadow-xs'
+                : 'border-slate-200 bg-white hover:border-emerald-300'
+            }`}
+          >
+            <span className="text-sm font-black text-slate-900">
+              1. Versão Com Venda Online
+            </span>
+            <span className="mt-1 text-xs leading-5 text-slate-600">
+              E-commerce completo com carrinho ativo, checkout, pedidos e opções de entrega ou retirada.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void toggleOnlineSalesMode(false)}
+            className={`flex flex-col items-start rounded-2xl border-2 p-4 text-left transition ${
+              !Boolean(draft.venda_online_ativa ?? draft.commerceEnabled)
+                ? 'border-emerald-700 bg-emerald-50/70 shadow-xs'
+                : 'border-slate-200 bg-white hover:border-emerald-300'
+            }`}
+          >
+            <span className="text-sm font-black text-slate-900">
+              2. Versão Sem Venda Online (Catálogo / Vitrine)
+            </span>
+            <span className="mt-1 text-xs leading-5 text-slate-600">
+              Exibe produtos, ofertas relâmpago, panfleto, receitas e clube, ocultando o carrinho e botões de compra.
+            </span>
+          </button>
+        </div>
+
+        <Toggle
+          label="Habilitar compras online (venda_online_ativa)"
+          checked={Boolean(draft.venda_online_ativa ?? draft.commerceEnabled)}
+          onChange={(value) => void toggleOnlineSalesMode(value)}
+        />
+        <p className="m-0 text-xs text-slate-500">
+          Alterne a qualquer momento sem precisar de novo deploy. Quando desativado, o site funciona como vitrine digital e canal de divulgação.
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <Toggle label="Aceitar Pix" checked={draft.payments.pix.enabled} onChange={(enabled) => patch('payments', { ...draft.payments, pix: { ...draft.payments.pix, enabled } })} />
           <Toggle label="Cartão na entrega (maquininha)" checked={draft.payments.cardOnDelivery} onChange={(cardOnDelivery) => patch('payments', { ...draft.payments, cardOnDelivery })} />

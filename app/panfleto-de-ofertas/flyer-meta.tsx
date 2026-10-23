@@ -2,11 +2,11 @@
 
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
-import { CalendarDays, Plus, ShoppingBasket, X } from 'lucide-react';
+import { CalendarDays, Plus, ShoppingBasket, Store, X } from 'lucide-react';
 import {
   useAdminData,
   useManagedProducts,
-  useSiteSettings,
+  useOnlineSales,
 } from '../admin-data-provider';
 import { useShoppingCart } from '../cart-provider';
 import { ProductCard } from '../shop-components';
@@ -14,7 +14,7 @@ import type { CatalogProduct } from '@/lib/catalog-types';
 import { isPdfFlyer } from '@/lib/flyer-file';
 
 export const FLYER_PUBLIC_SECTIONS = [
-  { id: 'capa', title: 'Destaques da semana', accent: 'bg-orange-500' },
+  { id: 'capa', title: 'Destaques da semana', accent: 'bg-red-600' },
   { id: 'hortifruti', title: 'Feirinha fresquinha', accent: 'bg-emerald-700' },
   { id: 'acougue-bebidas', title: 'Açougue e bebidas', accent: 'bg-rose-700' },
   {
@@ -67,7 +67,7 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
   const managedProducts = useManagedProducts(products);
   const { data, selectFlyer } = useAdminData();
   const { addToCart } = useShoppingCart();
-  const { settings } = useSiteSettings();
+  const { venda_online_ativa } = useOnlineSales();
   const [now, setNow] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(
     null,
@@ -164,7 +164,9 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
                 Ofertas do encarte
               </h2>
               <p className="mb-0 mt-1 text-xs text-slate-500">
-                Selecione um produto para ver o preço e adicionar à sacola.
+                {venda_online_ativa
+                  ? 'Selecione um produto para ver o preço e adicionar à sacola.'
+                  : 'Selecione um produto para conferir os detalhes da oferta.'}
               </p>
             </div>
             {linkedProducts.length ? (
@@ -199,7 +201,7 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
                           {(Boolean(product.badge?.trim()) || sectionName) && (
                             <span className="mb-1 flex flex-wrap items-center gap-1.5">
                               {Boolean(product.badge?.trim()) && (
-                                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-800">
+                                <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-800">
                                   {product.badge}
                                 </span>
                               )}
@@ -302,7 +304,7 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
               <p className="m-0 text-3xl font-black text-emerald-800">
                 {currency.format(activeSelectedProduct.price)}
               </p>
-              {settings.commerceEnabled ? (
+              {venda_online_ativa ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -315,10 +317,10 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
                   Adicionar ao carrinho
                 </button>
               ) : (
-                <p className="m-0 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-                  Compras online pausadas. Consulte a disponibilidade com a
-                  loja.
-                </p>
+                <div className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-sm font-semibold text-emerald-900">
+                  <Store size={18} className="shrink-0 text-emerald-700" />
+                  <span>Consulte na loja física · Catálogo de ofertas</span>
+                </div>
               )}
             </div>
           </section>

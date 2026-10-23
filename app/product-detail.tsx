@@ -3,10 +3,9 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
-import { Check, Minus, Plus, ShieldCheck, ShoppingCart } from 'lucide-react';
+import { Check, Minus, Plus, ShieldCheck, ShoppingCart, Store } from 'lucide-react';
 import { useShoppingCart } from './cart-provider';
-import { useManagedProduct } from './admin-data-provider';
-import { useSiteSettings } from './admin-data-provider';
+import { useManagedProduct, useOnlineSales } from './admin-data-provider';
 import {
   ProductCard,
   ProductImage,
@@ -26,7 +25,7 @@ export default function ProductDetail({
   recommendations: CatalogProduct[];
 }) {
   const product = useManagedProduct(sourceProduct);
-  const { settings } = useSiteSettings();
+  const { venda_online_ativa } = useOnlineSales();
   const { addToCart } = useShoppingCart();
   const [quantity, setQuantity] = useState(1);
   const [activeImage, setActiveImage] = useState(product.image);
@@ -58,7 +57,7 @@ export default function ProductDetail({
               <ProductImage product={product} className="absolute inset-0" />
             )}
             {discount && (
-              <span className="absolute left-4 top-4 rounded-full bg-orange-500 px-4 py-2 text-sm font-black text-white">
+              <span className="absolute left-4 top-4 rounded-full bg-red-600 px-4 py-2 text-sm font-black text-white shadow-sm">
                 {discount}% OFF
               </span>
             )}
@@ -103,7 +102,7 @@ export default function ProductDetail({
             {currency.format(product.price)}
           </p>
           {discount && (
-            <p className="mb-6 mt-0 text-sm font-semibold text-orange-700">
+            <p className="mb-6 mt-0 text-sm font-bold text-red-700">
               Você economiza {currency.format(product.oldPrice! - product.price)}
             </p>
           )}
@@ -119,52 +118,79 @@ export default function ProductDetail({
                 Consulte disponibilidade
               </span>
             )}
-            <span className="inline-flex items-center gap-1.5 text-slate-500">
-              <ShieldCheck size={16} className="text-emerald-700" />
-              Compra segura
-            </span>
+            {venda_online_ativa ? (
+              <span className="inline-flex items-center gap-1.5 text-slate-500">
+                <ShieldCheck size={16} className="text-emerald-700" />
+                Compra segura
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-slate-500">
+                <Store size={16} className="text-emerald-700" />
+                Catálogo de ofertas
+              </span>
+            )}
           </div>
 
-          {settings.commerceEnabled ? (
-            <div className="mb-5 flex items-center gap-3">
-              <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-1.5">
+          {venda_online_ativa ? (
+            <>
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((current) => Math.max(1, current - 1))}
+                    aria-label="Diminuir quantidade"
+                    className="rounded-lg p-2 hover:bg-slate-100"
+                  >
+                    <Minus size={17} />
+                  </button>
+                  <span className="min-w-6 text-center font-bold">{quantity}</span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((current) => current + 1)}
+                    aria-label="Aumentar quantidade"
+                    className="rounded-lg p-2 hover:bg-slate-100"
+                  >
+                    <Plus size={17} />
+                  </button>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setQuantity((current) => Math.max(1, current - 1))}
-                  aria-label="Diminuir quantidade"
-                  className="rounded-lg p-2 hover:bg-slate-100"
+                  onClick={addSelectedQuantity}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3.5 font-bold text-white shadow-sm transition hover:bg-red-700"
                 >
-                  <Minus size={17} />
-                </button>
-                <span className="min-w-6 text-center font-bold">{quantity}</span>
-                <button
-                  type="button"
-                  onClick={() => setQuantity((current) => current + 1)}
-                  aria-label="Aumentar quantidade"
-                  className="rounded-lg p-2 hover:bg-slate-100"
-                >
-                  <Plus size={17} />
+                  <ShoppingCart size={19} />
+                  Adicionar à sacola
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={addSelectedQuantity}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3.5 font-bold text-white transition hover:bg-orange-600"
-              >
-                <ShoppingCart size={19} />
-                Adicionar à sacola
-              </button>
-            </div>
-          ) : (
-            <p className="mb-5 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Loja em modo vitrine: compras online temporariamente pausadas.</p>
-          )}
 
-          <p className="m-0 text-xs text-slate-500">
-            Total dos itens selecionados:{' '}
-            <strong className="text-slate-800">
-              {currency.format(product.price * quantity)}
-            </strong>
-          </p>
+              <p className="m-0 text-xs text-slate-500">
+                Total dos itens selecionados:{' '}
+                <strong className="text-slate-800">
+                  {currency.format(product.price * quantity)}
+                </strong>
+              </p>
+            </>
+          ) : (
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-800 shadow-2xs">
+                  <Store size={20} />
+                </span>
+                <div>
+                  <p className="m-0 font-bold">Consulte na loja física</p>
+                  <p className="mb-0 mt-0.5 text-xs text-emerald-800">
+                    Catálogo de ofertas · Confira os endereços e horários de atendimento.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/lojas"
+                className="rounded-xl bg-emerald-800 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-emerald-700"
+              >
+                Ver unidades
+              </Link>
+            </div>
+          )}
 
           <section className="mt-8 border-t border-slate-200 pt-6">
             <h2 className="mb-2 mt-0 text-lg font-black">Sobre este produto</h2>
@@ -221,10 +247,10 @@ export default function ProductDetail({
           <div className="mb-5 flex items-end justify-between gap-4">
             <div>
               <p className="mb-1 mt-0 text-xs font-bold uppercase tracking-wider text-emerald-700">
-                Complete a sua compra
+                {venda_online_ativa ? 'Complete a sua compra' : 'Mais ofertas do catálogo'}
               </p>
               <h2 className="m-0 text-2xl font-black">
-                Quem comprou também levou
+                {venda_online_ativa ? 'Quem comprou também levou' : 'Produtos relacionados'}
               </h2>
             </div>
             <Link href="/catalogo" className="hidden text-sm font-bold text-emerald-800 hover:underline sm:block">

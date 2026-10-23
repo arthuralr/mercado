@@ -67,7 +67,7 @@ export default function CartDrawer({
     changeQuantity,
     removeFromCart,
   } = useShoppingCart();
-  const { settings } = useSiteSettings();
+  const { settings, venda_online_ativa } = useSiteSettings();
   const storeName = settings.institution.storeName.trim() || 'Supermercado';
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [saveListOpen, setSaveListOpen] = useState(false);
@@ -384,7 +384,7 @@ export default function CartDrawer({
     })();
   }
 
-  if (!open) return null;
+  if (!open || !venda_online_ativa) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">

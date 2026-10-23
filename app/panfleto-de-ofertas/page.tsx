@@ -12,6 +12,7 @@ import {
   FlyerValidity,
 } from './flyer-meta';
 import FlashOffersSection from '../flash-offers-section';
+import { ShoppingListCalloutBanner } from '../shopping-list-tool';
 import { getLocalPageMetadata } from '@/lib/local-seo';
 
 export const instant = false;
@@ -51,7 +52,7 @@ export default async function FlyerPage() {
               <FlyerValidity />
             </div>
           </div>
-          <div className="absolute bottom-8 right-8 hidden h-24 w-24 items-center justify-center rounded-full bg-orange-500 text-white shadow-xl sm:flex">
+          <div className="absolute bottom-8 right-8 hidden h-24 w-24 items-center justify-center rounded-full bg-red-600 text-white shadow-xl sm:flex">
             <div className="text-center">
               <BadgePercent size={30} className="mx-auto" />
               <span className="text-xs font-black">DA SEMANA</span>
@@ -60,6 +61,10 @@ export default async function FlyerPage() {
         </section>
 
         <FlashOffersSection products={products} />
+
+        <div className="mb-8">
+          <ShoppingListCalloutBanner />
+        </div>
 
         <FlyerArtwork products={products} />
 

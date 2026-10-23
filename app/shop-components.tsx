@@ -5,8 +5,11 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {
   ArrowLeft,
+  BadgePercent,
   ChevronRight,
+  ClipboardList,
   Clock3,
+  MessageCircle,
   Minus,
   Plus,
   Heart,
@@ -15,8 +18,12 @@ import {
   Store,
 } from 'lucide-react';
 import { useShoppingCart } from './cart-provider';
-import { useSiteSettings } from './admin-data-provider';
+import { useOnlineSales, useSiteSettings } from './admin-data-provider';
 import { useManagedProduct } from './admin-data-provider';
+import {
+  openQuickShoppingList,
+  useQuickShoppingListCount,
+} from './shopping-list-tool';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import BrandLogo from './brand-logo';
 
@@ -53,7 +60,11 @@ export function formatOfferCountdown(
 
 export function ShopHeader() {
   const { itemCount, total, openCart } = useShoppingCart();
-  const { settings } = useSiteSettings();
+  const { settings, venda_online_ativa } = useSiteSettings();
+  const quickListCount = useQuickShoppingListCount();
+  const cleanWhatsappDigits = settings.channels.whatsappNumber.replace(/\D/g, '');
+  const whatsappDigits = cleanWhatsappDigits.length >= 10 ? cleanWhatsappDigits : '551140044040';
+  const whatsappUrl = `https://wa.me/${whatsappDigits}`;
 
   return (
     <header className={`sticky ${settings.topbar.enabled && settings.topbar.text ? 'top-8' : 'top-0'} z-40 border-b border-slate-200 bg-white shadow-sm`}>
@@ -69,10 +80,24 @@ export function ShopHeader() {
             </Link>
             <Link
               href="/panfleto-de-ofertas"
-              className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-800"
+              className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3.5 py-2 text-sm font-extrabold text-red-700 transition hover:border-red-300 hover:bg-red-100 hover:text-red-800"
             >
+              <BadgePercent size={16} className="text-red-600" />
               Panfleto de Ofertas
             </Link>
+            <button
+              type="button"
+              onClick={openQuickShoppingList}
+              className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-3.5 py-2 text-sm font-extrabold text-amber-950 transition hover:border-amber-400 hover:bg-amber-200"
+            >
+              <ClipboardList size={16} className="text-amber-900" />
+              Crie sua Lista de Compras
+              {quickListCount > 0 && (
+                <span className="rounded-full bg-zinc-900 px-1.5 py-0.5 text-[11px] font-black text-amber-300">
+                  {quickListCount}
+                </span>
+              )}
+            </button>
             <Link
               href="/receitas"
               className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-800"
@@ -82,30 +107,61 @@ export function ShopHeader() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <Link href="/conta" aria-label="Minha conta" className="rounded-xl p-2 text-slate-600 hover:bg-emerald-50 hover:text-emerald-800">
-              <UserRound size={20} />
-            </Link>
-            <button
-              type="button"
-              onClick={openCart}
-              aria-label={`Abrir carrinho, ${itemCount} ${itemCount === 1 ? 'item' : 'itens'}, total ${currency.format(total)}`}
-              className="flex items-center gap-2 rounded-xl bg-orange-500 px-3 py-2.5 font-bold text-white transition hover:bg-orange-600"
-            >
-              <ShoppingCart size={19} />
-              <span className="hidden sm:inline">Carrinho</span>
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-xs text-orange-600">
-                {itemCount}
-              </span>
-            </button>
+            {settings.channels.whatsappEnabled && (
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Atendimento via WhatsApp"
+                className="hidden items-center gap-1.5 rounded-xl bg-[#25D366] px-3 py-2 text-xs font-extrabold text-white shadow-xs transition hover:brightness-95 lg:inline-flex"
+              >
+                <MessageCircle size={16} />
+                <span>WhatsApp</span>
+              </a>
+            )}
+            {venda_online_ativa && (
+              <Link href="/conta" aria-label="Minha conta" className="rounded-xl p-2 text-slate-600 hover:bg-emerald-50 hover:text-emerald-800">
+                <UserRound size={20} />
+              </Link>
+            )}
+            {venda_online_ativa ? (
+              <button
+                type="button"
+                onClick={openCart}
+                aria-label={`Abrir carrinho, ${itemCount} ${itemCount === 1 ? 'item' : 'itens'}, total ${currency.format(total)}`}
+                className="flex items-center gap-2.5 rounded-xl bg-red-600 px-3.5 py-2.5 font-extrabold text-white shadow-md ring-1 ring-red-700/20 transition hover:bg-red-700 active:scale-[0.99]"
+              >
+                <ShoppingCart size={19} className="text-white" />
+                <span className="hidden sm:inline">Carrinho</span>
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-xs font-black text-red-700 shadow-xs">
+                  {itemCount}
+                </span>
+              </button>
+            ) : (
+              <Link
+                href="/lojas"
+                className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 sm:inline-flex"
+              >
+                <Store size={16} className="text-emerald-700" />
+                <span>Consulte na loja física</span>
+              </Link>
+            )}
           </div>
         </div>
-        <nav aria-label="Navegação móvel" className="flex gap-2 border-t border-slate-100 px-3 py-2 sm:hidden">
+        <nav aria-label="Navegação móvel" className="flex gap-1.5 border-t border-slate-100 px-3 py-2 sm:hidden">
           <Link href="/catalogo" className="min-w-0 flex-1 rounded-lg bg-slate-50 px-2 py-2 text-center text-xs font-semibold">
             Catálogo
           </Link>
-          <Link href="/panfleto-de-ofertas" className="min-w-0 flex-1 rounded-lg bg-slate-50 px-2 py-2 text-center text-xs font-semibold">
+          <Link href="/panfleto-de-ofertas" className="min-w-0 flex-1 rounded-lg border border-red-200 bg-red-50 px-2 py-2 text-center text-xs font-extrabold text-red-700">
             Panfleto
           </Link>
+          <button
+            type="button"
+            onClick={openQuickShoppingList}
+            className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-amber-100 px-2 py-2 text-center text-xs font-extrabold text-amber-950"
+          >
+            Criar Lista{quickListCount > 0 ? ` (${quickListCount})` : ''}
+          </button>
           <Link href="/receitas" className="min-w-0 flex-1 rounded-lg bg-slate-50 px-2 py-2 text-center text-xs font-semibold">
             Receitas
           </Link>
@@ -174,7 +230,7 @@ export function ProductCard({
   now?: number;
 }) {
   const product = useManagedProduct(sourceProduct);
-  const { settings } = useSiteSettings();
+  const { venda_online_ativa } = useOnlineSales();
   const { cart, addToCart, changeQuantity } = useShoppingCart();
   const [localNow, setLocalNow] = useState(0);
 
@@ -207,12 +263,12 @@ export function ProductCard({
         {(discount > 0 || Boolean(product.badge?.trim())) && (
           <div className="pointer-events-none absolute left-2 top-2 flex max-w-[calc(100%-3.25rem)] flex-wrap gap-1.5">
             {discount > 0 && (
-              <span className="rounded-full bg-orange-500 px-2.5 py-1 text-xs font-black text-white shadow-sm">
+              <span className="rounded-full bg-red-600 px-2.5 py-1 text-xs font-black text-white shadow-sm">
                 -{discount}%
               </span>
             )}
             {Boolean(product.badge?.trim()) && (
-              <span className="truncate rounded-full bg-emerald-800/95 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">
+              <span className="truncate rounded-full bg-zinc-900/90 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">
                 {product.badge}
               </span>
             )}
@@ -244,7 +300,7 @@ export function ProductCard({
         <p className="mb-3 mt-1 text-xs text-slate-500">{product.unit} · {product.brand}</p>
         {product.flashOfferEndsAt && (
           <div
-            className="mb-3 flex items-center justify-between gap-1.5 rounded-xl border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-700"
+            className="mb-3 flex items-center justify-between gap-2 rounded-xl bg-red-600 px-3 py-2 text-white shadow-sm"
             aria-label={
               countdown
                 ? `Oferta de ${product.name} termina em ${countdown.hours} horas, ${countdown.minutes} minutos e ${countdown.seconds} segundos`
@@ -252,11 +308,11 @@ export function ProductCard({
             }
             aria-live="off"
           >
-            <span className="inline-flex items-center gap-1">
-              <Clock3 size={13} className="shrink-0 text-orange-600" />
+            <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-white">
+              <Clock3 size={15} className="shrink-0 text-yellow-300" />
               <span>Termina em</span>
             </span>
-            <span className="rounded bg-orange-600 px-1.5 py-0.5 font-mono text-[11px] font-black tracking-wider text-white">
+            <span className="rounded-lg bg-zinc-950/90 px-2.5 py-1 font-mono text-xs font-black tracking-widest text-white shadow-xs sm:text-sm">
               {countdown ? countdown.formatted : '--:--:--'}
             </span>
           </div>
@@ -268,8 +324,12 @@ export function ProductCard({
             )}
             <p className="m-0 text-lg font-black text-emerald-800">{currency.format(product.price)}</p>
           </div>
-          {!settings.commerceEnabled ? (
-            <span className="text-xs font-semibold text-slate-500">Vitrine</span>
+          {!venda_online_ativa ? (
+            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600">
+              <Store size={13} className="shrink-0 text-emerald-700" />
+              <span className="hidden sm:inline">Consulte na loja</span>
+              <span className="sm:hidden">Na loja</span>
+            </span>
           ) : quantity ? (
             <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-1">
               <button type="button" onClick={() => changeQuantity(product.id, -1)} aria-label={`Diminuir quantidade de ${product.name}`} className="rounded-lg p-1.5 hover:bg-white">

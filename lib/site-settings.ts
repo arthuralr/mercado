@@ -15,6 +15,7 @@ export interface SiteSettings {
     primaryColor: string;
     secondaryColor: string;
   };
+  venda_online_ativa: boolean;
   commerceEnabled: boolean;
   payments: {
     pix: { enabled: boolean; key: string };
@@ -79,6 +80,7 @@ export const defaultSiteSettings: SiteSettings = {
     primaryColor: '#067647',
     secondaryColor: '#334155',
   },
+  venda_online_ativa: true,
   commerceEnabled: true,
   payments: {
     pix: { enabled: true, key: '' },
@@ -174,12 +176,66 @@ export const defaultSiteSettings: SiteSettings = {
   },
 };
 
-export function mergeSiteSettings(value: unknown): SiteSettings {
+export function resolveOnlineSalesEnabled(
+  value: unknown,
+  row?: Record<string, unknown> | null,
+): boolean {
+  if (row && typeof row === 'object') {
+    if (typeof row.venda_online_ativa === 'boolean') {
+      return row.venda_online_ativa;
+    }
+    if (typeof row.commerce_enabled === 'boolean') {
+      return row.commerce_enabled;
+    }
+  }
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if (typeof record.venda_online_ativa === 'boolean') {
+      return record.venda_online_ativa;
+    }
+    if (typeof record.commerceEnabled === 'boolean') {
+      return record.commerceEnabled;
+    }
+    if (typeof record.plano === 'string') {
+      const normalizedPlan = record.plano.trim().toLowerCase();
+      if (normalizedPlan === 'catalogo' || normalizedPlan === 'vitrine') {
+        return false;
+      }
+      if (normalizedPlan === 'ecommerce' || normalizedPlan === 'venda_online') {
+        return true;
+      }
+    }
+  }
+
+  if (row && typeof row === 'object' && row.settings && typeof row.settings === 'object') {
+    const settingsObj = row.settings as Record<string, unknown>;
+    if (typeof settingsObj.venda_online_ativa === 'boolean') {
+      return settingsObj.venda_online_ativa;
+    }
+    if (typeof settingsObj.commerceEnabled === 'boolean') {
+      return settingsObj.commerceEnabled;
+    }
+  }
+
+  return defaultSiteSettings.venda_online_ativa;
+}
+
+export function mergeSiteSettings(
+  value: unknown,
+  row?: Record<string, unknown> | null,
+): SiteSettings {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return defaultSiteSettings;
+    const onlineSales = resolveOnlineSalesEnabled(value, row);
+    return {
+      ...defaultSiteSettings,
+      venda_online_ativa: onlineSales,
+      commerceEnabled: onlineSales,
+    };
   }
 
   const input = value as Partial<SiteSettings>;
+  const onlineSalesEnabled = resolveOnlineSalesEnabled(value, row);
   const inputCampaigns = input.banners?.campaigns;
   const campaigns = Array.isArray(inputCampaigns) && inputCampaigns.length > 0
     ? inputCampaigns.map((campaign, index) => {
@@ -253,6 +309,8 @@ export function mergeSiteSettings(value: unknown): SiteSettings {
   return {
     ...defaultSiteSettings,
     ...input,
+    venda_online_ativa: onlineSalesEnabled,
+    commerceEnabled: onlineSalesEnabled,
     brand: { ...defaultSiteSettings.brand, ...input.brand },
     payments: {
       ...defaultSiteSettings.payments,
