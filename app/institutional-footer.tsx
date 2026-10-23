@@ -147,7 +147,7 @@ export default function InstitutionalFooter() {
       <div className="border-t border-zinc-800/80">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 text-xs text-zinc-500 sm:px-6 lg:px-8">
           <span>
-            © {new Date().getFullYear()} {settings.institution.storeName} · Os preços e a disponibilidade podem variar por loja.
+            © 2026 {settings.institution.storeName} · Os preços e a disponibilidade podem variar por loja.
           </span>
           <Link href="/admin" className="inline-flex items-center gap-1 font-medium text-zinc-500 transition-colors hover:text-zinc-300">
             Acesso do gestor <ArrowRight size={11} />

@@ -762,7 +762,7 @@ export default function HomePage({ products }: { products: Product[] }) {
         <div className="border-t border-zinc-800/80">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 text-xs text-zinc-500 lg:px-8">
             <p className="m-0">
-              © {new Date().getFullYear()} {settings.institution.storeName}. Todos os direitos reservados.
+              © 2026 {settings.institution.storeName}. Todos os direitos reservados.
             </p>
             <Link href="/admin" className="inline-flex items-center gap-1 font-medium text-zinc-500 transition-colors hover:text-zinc-300">
               Acesso do gestor <ArrowRight size={11} />
