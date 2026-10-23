@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
@@ -55,6 +55,7 @@ import {
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import {
   createAdminProduct,
+  deleteAdminProduct,
   fetchActiveOffersCount,
   fetchAdminOffers,
   fetchAdminProducts,
@@ -63,11 +64,14 @@ import {
   fetchTodayOrderCount,
   fetchTodayMetrics,
   FLYER_SECTION_OPTIONS,
+  STANDARD_PRODUCT_CATEGORIES,
+  STANDARD_PRODUCT_UNITS,
   importProductPrices,
   persistFlyer,
   persistOffer,
   persistProduct,
   removeOffer as removeOfferFromDatabase,
+  uploadProductImage,
   type PriceImportRow,
 } from '@/lib/admin-database';
 import AdminExtraPanel from './extra-panel';
@@ -76,6 +80,39 @@ import AdminRecipesPanel from './recipes-panel';
 
 type Section = 'overview' | 'offers' | 'products' | 'flyer' | 'recipes' | 'settings' | 'submissions' | 'calendar' | 'push';
 type OfferForm = Omit<AdminOffer, 'id'> & { id: string };
+
+interface ProductFormState {
+  id?: string;
+  name: string;
+  description: string;
+  category: string;
+  customCategory: string;
+  unit: string;
+  brand: string;
+  normalPrice: string;
+  offerPrice: string;
+  stock: string;
+  image: string;
+  badge: string;
+  flyerPage: string;
+  active: boolean;
+}
+
+const defaultProductForm: ProductFormState = {
+  name: '',
+  description: '',
+  category: 'Hortifrúti',
+  customCategory: '',
+  unit: 'unidade',
+  brand: '',
+  normalPrice: '',
+  offerPrice: '',
+  stock: '',
+  image: '',
+  badge: '',
+  flyerPage: '',
+  active: true,
+};
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -223,6 +260,26 @@ export default function AdminDashboard({
   const [productDrafts, setProductDrafts] = useState<
     Record<string, { price: string; stock: string }>
   >({});
+  const [productModal, setProductModal] = useState<{
+    isOpen: boolean;
+    mode: 'create' | 'edit';
+    product?: CatalogProduct;
+  } | null>(null);
+  const [productForm, setProductForm] = useState<ProductFormState>(defaultProductForm);
+  const [productFormSaving, setProductFormSaving] = useState(false);
+  const [productFormUploading, setProductFormUploading] = useState(false);
+  const [productFormError, setProductFormError] = useState('');
+  const productImageInput = useRef<HTMLInputElement>(null);
+
+  const existingProductCategories = useMemo(() => {
+    const categories = new Set<string>(STANDARD_PRODUCT_CATEGORIES);
+    for (const product of products) {
+      if (product.category?.trim()) {
+        categories.add(product.category.trim());
+      }
+    }
+    return Array.from(categories);
+  }, [products]);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvMessage, setCsvMessage] = useState('');
   const [csvError, setCsvError] = useState('');
@@ -623,6 +680,170 @@ export default function AdminDashboard({
       router.refresh();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Não foi possível salvar o produto.');
+    }
+  }
+
+  function openNewProductModal() {
+    setProductForm(defaultProductForm);
+    setProductFormError('');
+    setProductModal({ isOpen: true, mode: 'create' });
+  }
+
+  function openEditProductModal(product: CatalogProduct) {
+    const isStandard = (STANDARD_PRODUCT_CATEGORIES as readonly string[]).includes(
+      product.category,
+    );
+    setProductForm({
+      id: product.id,
+      name: product.name,
+      description: product.description ?? '',
+      category: isStandard ? product.category : 'custom',
+      customCategory: isStandard ? '' : product.category,
+      unit: product.unit || 'unidade',
+      brand: product.brand || '',
+      normalPrice: String(product.oldPrice ?? product.price),
+      offerPrice: product.oldPrice !== null ? String(product.price) : '',
+      stock:
+        product.stock === null || product.stock === undefined
+          ? ''
+          : String(product.stock),
+      image: product.image ?? '',
+      badge: product.badge ?? '',
+      flyerPage: product.flyerPage ?? '',
+      active: product.active ?? true,
+    });
+    setProductFormError('');
+    setProductModal({ isOpen: true, mode: 'edit', product });
+  }
+
+  async function handleProductImageUpload(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setProductFormUploading(true);
+    setProductFormError('');
+    try {
+      const uploadedUrl = await uploadProductImage(file);
+      setProductForm((prev) => ({ ...prev, image: uploadedUrl }));
+    } catch (err) {
+      setProductFormError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao fazer upload da imagem.',
+      );
+    } finally {
+      setProductFormUploading(false);
+    }
+  }
+
+  async function handleSaveProductForm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setProductFormError('');
+    setProductFormSaving(true);
+    try {
+      const name = productForm.name.trim();
+      if (!name) throw new Error('Informe o nome do produto.');
+      const normalPrice = Number(productForm.normalPrice.replace(',', '.'));
+      if (!Number.isFinite(normalPrice) || normalPrice <= 0) {
+        throw new Error('Informe um preço normal maior que zero.');
+      }
+      let offerPrice: number | null = null;
+      if (productForm.offerPrice.trim()) {
+        const parsedOffer = Number(productForm.offerPrice.replace(',', '.'));
+        if (!Number.isFinite(parsedOffer) || parsedOffer <= 0) {
+          throw new Error('O preço promocional deve ser maior que zero.');
+        }
+        if (parsedOffer >= normalPrice) {
+          throw new Error(
+            'O preço promocional deve ser menor que o preço normal.',
+          );
+        }
+        offerPrice = Number(parsedOffer.toFixed(2));
+      }
+      const stock =
+        productForm.stock.trim() === '' ? null : Number(productForm.stock);
+      if (stock !== null && (!Number.isInteger(stock) || stock < 0)) {
+        throw new Error('O estoque deve ser um número inteiro maior ou igual a zero.');
+      }
+      const finalCategory =
+        productForm.category === 'custom'
+          ? productForm.customCategory.trim() || 'Mercearia'
+          : productForm.category.trim() || 'Mercearia';
+
+      if (productModal?.mode === 'create') {
+        const created = await createAdminProduct({
+          name,
+          description: productForm.description.trim() || null,
+          category: finalCategory,
+          unit: productForm.unit.trim() || 'unidade',
+          brand: productForm.brand.trim() || undefined,
+          normalPrice,
+          offerPrice,
+          stock,
+          image: productForm.image.trim() || null,
+          badge: productForm.badge.trim() || null,
+          flyerPage: productForm.flyerPage.trim() || null,
+        });
+        setProducts((current) => [created, ...current]);
+        setProductModal(null);
+        setCsvMessage(`Produto "${created.name}" cadastrado com sucesso!`);
+      } else if (productModal?.product) {
+        const updated = await persistProduct(productModal.product.id, {
+          name,
+          description: productForm.description.trim() || null,
+          category: finalCategory,
+          unit: productForm.unit.trim() || 'unidade',
+          brand: productForm.brand.trim() || null,
+          normalPrice,
+          offerPrice,
+          stock,
+          image: productForm.image.trim() || null,
+          badge: productForm.badge.trim() || null,
+          flyerPage: productForm.flyerPage.trim() || null,
+          active: productForm.active,
+        });
+        setProducts((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setProductModal(null);
+        setCsvMessage(`Produto "${updated.name}" atualizado com sucesso!`);
+      }
+      window.dispatchEvent(new Event('catalog-products-changed'));
+      void revalidateCatalogAndFlyer().catch(() => undefined);
+      router.refresh();
+    } catch (err) {
+      setProductFormError(
+        err instanceof Error ? err.message : 'Falha ao salvar produto.',
+      );
+    } finally {
+      setProductFormSaving(false);
+    }
+  }
+
+  async function handleDeleteProduct(product: CatalogProduct) {
+    if (
+      !window.confirm(
+        `Tem certeza que deseja excluir o produto "${product.name}"? Esta ação removerá o produto do catálogo e do encarte.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await deleteAdminProduct(product.id);
+      setProducts((current) => current.filter((item) => item.id !== product.id));
+      if (productModal?.product?.id === product.id) {
+        setProductModal(null);
+      }
+      setCsvMessage(`Produto "${product.name}" excluído com sucesso.`);
+      window.dispatchEvent(new Event('catalog-products-changed'));
+      void revalidateCatalogAndFlyer().catch(() => undefined);
+      router.refresh();
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Não foi possível excluir o produto.',
+      );
     }
   }
 
@@ -1277,6 +1498,14 @@ export default function AdminDashboard({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <label className="flex min-w-64 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5"><Search size={18} className="text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por ID, produto, marca ou categoria" className="w-full bg-transparent text-sm outline-none" aria-label="Buscar produtos no painel" /></label>
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={openNewProductModal}
+                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.99]"
+                  >
+                    <Plus size={18} />
+                    Novo Produto
+                  </button>
                   <button type="button" onClick={exportCurrentProductsCsv} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"><Download size={17} /> Baixar CSV atual</button>
                   <button type="button" onClick={() => csvInput.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-50"><FileSpreadsheet size={17} /> Importar lista CSV</button>
                 </div>
@@ -1291,7 +1520,7 @@ export default function AdminDashboard({
                       Colunas obrigatórias: <code className="rounded bg-white px-1.5 py-0.5 font-bold">id</code> e <code className="rounded bg-white px-1.5 py-0.5 font-bold">preco_normal</code>. A coluna <code className="rounded bg-white px-1.5 py-0.5 font-bold">estoque</code> é opcional.
                     </p>
                     <p className="m-0 text-sm font-semibold text-amber-900">
-                      A importação atualiza produtos que já existem, localizados pelo ID. Ela não cria produtos novos.
+                      A importação atualiza produtos que já existem, localizados pelo ID. Para criar novos itens, utilize o botão <strong>&ldquo;Novo Produto&rdquo;</strong> acima.
                     </p>
                     <div className="rounded-xl border border-blue-100 bg-white px-3 py-2.5">
                       <p className="mb-1 mt-0 text-xs font-bold uppercase tracking-wide text-slate-500">Exemplo (separador ; e decimal com vírgula)</p>
@@ -1341,24 +1570,165 @@ export default function AdminDashboard({
                 </p>
               )}
               <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-                <table className="w-full min-w-[820px] border-collapse text-left">
-                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3 font-bold">Produto</th><th className="px-4 py-3 font-bold">Categoria</th><th className="px-4 py-3 font-bold">Preço (R$)</th><th className="px-4 py-3 font-bold">Estoque</th><th className="px-4 py-3 font-bold">Status</th><th className="px-4 py-3 font-bold">Ação</th></tr></thead>
+                <table className="w-full min-w-[860px] border-collapse text-left">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3 font-bold">Produto</th>
+                      <th className="px-4 py-3 font-bold">Categoria / Setor</th>
+                      <th className="px-4 py-3 font-bold">Preço (R$)</th>
+                      <th className="px-4 py-3 font-bold">Estoque</th>
+                      <th className="px-4 py-3 font-bold">Status</th>
+                      <th className="px-4 py-3 font-bold text-right">Ações</th>
+                    </tr>
+                  </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredProducts.map((product) => {
                       const active = product.active ?? true;
                       const draft = productDrafts[product.id];
-                      return <tr key={product.id} className="align-middle">
-                        <td className="max-w-72 px-4 py-3"><span className="block truncate text-sm font-bold">{product.name}</span><span className="block truncate text-xs text-slate-500">{product.brand} · <code className="text-[11px] text-slate-400">ID: {product.id}</code></span></td>
-                        <td className="px-4 py-3 text-sm text-slate-600">{product.category}</td>
-                        <td className="px-4 py-3"><input type="number" min="0" step="0.01" aria-label={`Preço de ${product.name}`} value={draft?.price ?? String(product.oldPrice ?? product.price)} onChange={(event) => setProductDrafts((current) => ({ ...current, [product.id]: { price: event.target.value, stock: current[product.id]?.stock ?? String(product.stock ?? '') } }))} className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-sm" /></td>
-                        <td className="px-4 py-3"><input type="number" min="0" step="1" aria-label={`Estoque de ${product.name}`} value={draft?.stock ?? String(product.stock ?? '')} onChange={(event) => setProductDrafts((current) => ({ ...current, [product.id]: { price: current[product.id]?.price ?? String(product.oldPrice ?? product.price), stock: event.target.value } }))} className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-sm" /></td>
-                        <td className="px-4 py-3"><button type="button" onClick={() => void persistProduct(product.id, { active: !active }).then(() => { setProducts((current) => current.map((item) => item.id === product.id ? { ...item, active: !active } : item)); router.refresh(); }).catch((error: unknown) => setActionError(error instanceof Error ? error.message : 'Não foi possível alterar o status do produto.'))} aria-pressed={active} className={`rounded-full px-2.5 py-1 text-xs font-bold ${active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{active ? 'Ativo' : 'Inativo'}</button></td>
-                        <td className="px-4 py-3"><button type="button" onClick={() => saveProduct(product)} disabled={!draft} className="rounded-lg bg-emerald-800 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">Salvar</button></td>
-                      </tr>;
+                      return (
+                        <tr key={product.id} className="align-middle transition hover:bg-slate-50/60">
+                          <td className="max-w-80 px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                                {product.image ? (
+                                  <Image
+                                    src={product.image}
+                                    alt={product.name}
+                                    fill
+                                    sizes="48px"
+                                    className="object-contain p-1"
+                                    unoptimized
+                                  />
+                                ) : (
+                                  <Package size={20} className="text-slate-400" />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-bold text-slate-900">{product.name}</span>
+                                <span className="block truncate text-xs text-slate-500">
+                                  {product.brand ? `${product.brand} · ` : ''}{product.unit} · <code className="text-[11px] text-slate-400">{product.id}</code>
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm font-semibold text-slate-700">
+                            <span className="inline-flex rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-900">
+                              {product.category}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              aria-label={`Preço de ${product.name}`}
+                              value={draft?.price ?? String(product.oldPrice ?? product.price)}
+                              onChange={(event) =>
+                                setProductDrafts((current) => ({
+                                  ...current,
+                                  [product.id]: {
+                                    price: event.target.value,
+                                    stock: current[product.id]?.stock ?? String(product.stock ?? ''),
+                                  },
+                                }))
+                              }
+                              className="w-24 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium outline-none focus:border-emerald-700"
+                            />
+                            {product.oldPrice !== null && (
+                              <span className="mt-0.5 block text-[11px] font-bold text-red-600">
+                                Oferta: {currency.format(product.price)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              aria-label={`Estoque de ${product.name}`}
+                              value={draft?.stock ?? String(product.stock ?? '')}
+                              onChange={(event) =>
+                                setProductDrafts((current) => ({
+                                  ...current,
+                                  [product.id]: {
+                                    price: current[product.id]?.price ?? String(product.oldPrice ?? product.price),
+                                    stock: event.target.value,
+                                  },
+                                }))
+                              }
+                              placeholder="Ilimitado"
+                              className="w-20 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium outline-none focus:border-emerald-700"
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void persistProduct(product.id, { active: !active })
+                                  .then(() => {
+                                    setProducts((current) =>
+                                      current.map((item) =>
+                                        item.id === product.id ? { ...item, active: !active } : item,
+                                      ),
+                                    );
+                                    router.refresh();
+                                  })
+                                  .catch((error: unknown) =>
+                                    setActionError(
+                                      error instanceof Error
+                                        ? error.message
+                                        : 'Não foi possível alterar o status do produto.',
+                                    ),
+                                  )
+                              }
+                              aria-pressed={active}
+                              className={`rounded-full px-2.5 py-1 text-xs font-bold transition ${
+                                active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {active ? 'Ativo' : 'Inativo'}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {draft && (
+                                <button
+                                  type="button"
+                                  onClick={() => saveProduct(product)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-800 px-2.5 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-emerald-700"
+                                >
+                                  Salvar
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => openEditProductModal(product)}
+                                title="Editar produto completo (imagem, setor, valores, etc.)"
+                                aria-label={`Editar ${product.name}`}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 shadow-2xs transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+                              >
+                                <Pencil size={13} />
+                                <span>Editar</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteProduct(product)}
+                                title="Excluir produto"
+                                aria-label={`Excluir ${product.name}`}
+                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-700"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
                     })}
                   </tbody>
                 </table>
-                {!filteredProducts.length && <p className="p-8 text-center text-sm text-slate-500">Nenhum produto encontrado.</p>}
+                {!filteredProducts.length && (
+                  <p className="p-8 text-center text-sm text-slate-500">Nenhum produto encontrado.</p>
+                )}
               </div>
               <p className="text-xs leading-5 text-slate-500">A importação atualiza preços e, se informada, a quantidade em estoque dos produtos selecionados. Se qualquer ID ou valor for inválido, o arquivo inteiro é rejeitado.</p>
             </div>
@@ -1987,6 +2357,388 @@ export default function AdminDashboard({
                 Esta oferta dura {offerDurationDays(offerForm)} dia(s) corridos, contando as datas de início e término, e encerra às 23h59 (horário de Brasília) do último dia. O contador público usa esse prazo.
               </p>
               <div className="flex gap-2 pt-2"><button type="button" onClick={() => setOfferForm(null)} className="flex-1 rounded-xl border border-slate-200 py-3 font-bold text-slate-600 hover:bg-slate-50">Cancelar</button><button type="submit" className="flex-1 rounded-xl bg-emerald-800 py-3 font-bold text-white hover:bg-emerald-700">Salvar oferta</button></div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {productModal && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-[2px] overflow-y-auto"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !productFormSaving) {
+              setProductModal(null);
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-dialog-title"
+            className="my-auto max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+          >
+            <div className="mb-6 flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
+                  <Package size={13} />
+                  {productModal.mode === 'create' ? 'Novo Cadastro' : 'Edição de Produto'}
+                </span>
+                <h2
+                  id="product-dialog-title"
+                  className="m-0 mt-1.5 text-xl font-black text-slate-900 sm:text-2xl"
+                >
+                  {productModal.mode === 'create'
+                    ? 'Cadastrar Novo Produto'
+                    : `Editar: ${productModal.product?.name ?? 'Produto'}`}
+                </h2>
+                <p className="mb-0 mt-1 text-xs text-slate-500">
+                  {productModal.mode === 'create'
+                    ? 'Preencha as informações para adicionar o produto ao catálogo e encarte.'
+                    : 'Atualize os dados, imagem, categoria/setor e valores salvos no Supabase.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProductModal(null)}
+                disabled={productFormSaving}
+                aria-label="Fechar formulário de produto"
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProductForm} className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block text-sm font-semibold text-slate-700 sm:col-span-2">
+                  Nome do Produto <span className="text-red-500">*</span>
+                  <input
+                    required
+                    maxLength={120}
+                    value={productForm.name}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({ ...prev, name: e.target.value }))
+                    }
+                    placeholder="Ex.: Maçã Gala Selecionada 1kg"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                  />
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">
+                  Marca
+                  <input
+                    maxLength={80}
+                    value={productForm.brand}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({ ...prev, brand: e.target.value }))
+                    }
+                    placeholder="Ex.: Fazenda Verde"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-700">
+                    Categoria / Setor <span className="text-red-500">*</span>
+                    <select
+                      value={productForm.category}
+                      onChange={(e) =>
+                        setProductForm((prev) => ({
+                          ...prev,
+                          category: e.target.value,
+                        }))
+                      }
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium outline-none focus:border-emerald-700"
+                    >
+                      {existingProductCategories.map((cat: string) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                      <option value="custom">+ Outro setor personalizado...</option>
+                    </select>
+                  </label>
+                  {productForm.category === 'custom' && (
+                    <input
+                      required
+                      maxLength={50}
+                      value={productForm.customCategory}
+                      onChange={(e) =>
+                        setProductForm((prev) => ({
+                          ...prev,
+                          customCategory: e.target.value,
+                        }))
+                      }
+                      placeholder="Digite o nome da nova categoria"
+                      className="w-full rounded-xl border border-emerald-300 bg-emerald-50/50 px-3.5 py-2 text-sm outline-none focus:border-emerald-700"
+                    />
+                  )}
+                </div>
+
+                <label className="block text-sm font-semibold text-slate-700">
+                  Unidade de Medida
+                  <select
+                    value={productForm.unit}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({ ...prev, unit: e.target.value }))
+                    }
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium outline-none focus:border-emerald-700"
+                  >
+                    {STANDARD_PRODUCT_UNITS.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block text-sm font-semibold text-slate-700">
+                  Preço Normal (R$) <span className="text-red-500">*</span>
+                  <input
+                    required
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={productForm.normalPrice}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({
+                        ...prev,
+                        normalPrice: e.target.value,
+                      }))
+                    }
+                    placeholder="0,00"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-bold text-slate-900 outline-none focus:border-emerald-700"
+                  />
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">
+                  Preço Promocional (R$)
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={productForm.offerPrice}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({
+                        ...prev,
+                        offerPrice: e.target.value,
+                      }))
+                    }
+                    placeholder="Opcional"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-bold text-emerald-800 outline-none focus:border-emerald-700"
+                  />
+                  <span className="mt-1 block text-[11px] font-normal text-slate-400">
+                    Preço com desconto no catálogo
+                  </span>
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">
+                  Estoque (Qtd)
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={productForm.stock}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({ ...prev, stock: e.target.value }))
+                    }
+                    placeholder="Ilimitado"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                  />
+                  <span className="mt-1 block text-[11px] font-normal text-slate-400">
+                    Vazio = sem limite de estoque
+                  </span>
+                </label>
+              </div>
+
+              <label className="block text-sm font-semibold text-slate-700">
+                Descrição do Produto
+                <textarea
+                  rows={3}
+                  maxLength={1000}
+                  value={productForm.description}
+                  onChange={(e) =>
+                    setProductForm((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
+                  placeholder="Detalhes sobre o produto, procedência, peso ou dicas de consumo..."
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                />
+              </label>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <label className="block text-sm font-bold text-slate-900">
+                  Imagem do Produto
+                </label>
+                <p className="mb-3 mt-0.5 text-xs text-slate-500">
+                  Envie uma foto do seu computador ou informe um link direto de imagem.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xs">
+                    {productForm.image ? (
+                      <Image
+                        src={productForm.image}
+                        alt="Prévia do produto"
+                        fill
+                        sizes="96px"
+                        className="object-contain p-1"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-slate-400">
+                        <Package size={26} />
+                        <span className="text-[10px] font-semibold">Sem foto</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={productFormUploading}
+                        onClick={() => productImageInput.current?.click()}
+                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        <Upload size={15} />
+                        {productFormUploading ? 'Enviando imagem...' : 'Enviar foto do computador'}
+                      </button>
+                      <input
+                        ref={productImageInput}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => void handleProductImageUpload(e)}
+                      />
+                      {productForm.image && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setProductForm((prev) => ({ ...prev, image: '' }))
+                          }
+                          className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-50"
+                        >
+                          Remover foto
+                        </button>
+                      )}
+                    </div>
+
+                    <input
+                      type="url"
+                      value={productForm.image}
+                      onChange={(e) =>
+                        setProductForm((prev) => ({ ...prev, image: e.target.value }))
+                      }
+                      placeholder="Ou cole a URL da imagem (https://...)"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-emerald-700"
+                    />
+                    <p className="m-0 text-[11px] text-slate-400">
+                      Formatos aceitos: JPG, PNG, WebP até 5 MB. A foto é salva no Supabase Storage.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Seção no Panfleto
+                  <select
+                    value={productForm.flyerPage}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({
+                        ...prev,
+                        flyerPage: e.target.value,
+                      }))
+                    }
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-emerald-700"
+                  >
+                    <option value="">Não incluir no panfleto</option>
+                    {FLYER_SECTION_OPTIONS.map((sec) => (
+                      <option key={sec.id} value={sec.id}>
+                        {sec.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-xs font-semibold text-slate-700">
+                  Selo / Destaque
+                  <input
+                    maxLength={60}
+                    value={productForm.badge}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({ ...prev, badge: e.target.value }))
+                    }
+                    placeholder="Ex.: Destaque da Semana"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-emerald-700"
+                  />
+                </label>
+                <label className="flex items-center gap-2 pt-6 text-sm font-bold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={productForm.active}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({
+                        ...prev,
+                        active: e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 rounded border-slate-300 accent-emerald-700"
+                  />
+                  <span>Produto ativo no site</span>
+                </label>
+              </div>
+
+              {productFormError && (
+                <p
+                  role="alert"
+                  className="m-0 rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-800"
+                >
+                  {productFormError}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                {productModal.mode === 'edit' && productModal.product ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteProduct(productModal.product!)}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-700 hover:underline"
+                  >
+                    <Trash2 size={14} />
+                    Excluir produto
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={productFormSaving}
+                    onClick={() => setProductModal(null)}
+                    className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={productFormSaving || productFormUploading}
+                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
+                  >
+                    <Check size={16} />
+                    {productFormSaving
+                      ? 'Salvando no Supabase...'
+                      : productModal.mode === 'create'
+                        ? 'Cadastrar Produto'
+                        : 'Salvar Alterações'}
+                  </button>
+                </div>
+              </div>
             </form>
           </section>
         </div>

@@ -12,6 +12,36 @@ import {
   MAX_FLYER_FILE_SIZE,
 } from '@/lib/flyer-file';
 
+export const STANDARD_PRODUCT_CATEGORIES = [
+  'Hortifrúti',
+  'Açougue',
+  'Padaria',
+  'Bebidas',
+  'Frios e Laticínios',
+  'Mercearia',
+  'Limpeza',
+  'Higiene e Perfumaria',
+  'Congelados',
+  'Bazar e Casa',
+  'Pet Shop',
+  'Doces e Sobremesas',
+  'Outros',
+] as const;
+
+export const STANDARD_PRODUCT_UNITS = [
+  'unidade',
+  'kg',
+  'g',
+  'litro',
+  'ml',
+  'pacote',
+  'caixa',
+  'bandeja',
+  'lata',
+  'garrafa',
+  'pote',
+] as const;
+
 export interface PriceImportRow {
   id: string;
   preco_normal: number;
@@ -45,7 +75,7 @@ export interface ProductPatch {
   name?: string;
   category?: string;
   unit?: string;
-  brand?: string;
+  brand?: string | null;
   image?: string | null;
   description?: string | null;
 }
@@ -55,7 +85,7 @@ export interface NewAdminProductInput {
   name: string;
   category: string;
   unit?: string;
-  brand?: string;
+  brand?: string | null;
   normalPrice: number;
   offerPrice?: number | null;
   stock?: number | null;
@@ -205,7 +235,7 @@ export async function persistProduct(
     values.unidade = patch.unit.trim() || 'unidade';
   }
   if (patch.brand !== undefined) {
-    values.marca = patch.brand.trim() || null;
+    values.marca = patch.brand?.trim() || null;
   }
   if (Object.hasOwn(patch, 'image')) {
     values.imagem_url = patch.image?.trim() || null;
@@ -301,6 +331,44 @@ export async function createAdminProduct(
     throw new Error('O produto não pôde ser cadastrado.');
   }
   return mapProductRows([data])[0];
+}
+
+export async function uploadProductImage(file: File): Promise<string> {
+  if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
+    throw new Error('Formato inválido. Use imagem JPG, PNG ou WebP.');
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error('A imagem deve ter no máximo 5 MB.');
+  }
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
+  const path = `produtos/prod-${crypto.randomUUID()}-${safeName}`;
+  const { data, error } = await supabaseBrowser.storage
+    .from('encartes')
+    .upload(path, file, { contentType: file.type, upsert: false });
+  if (error) {
+    throw new Error(`Não foi possível enviar a imagem: ${error.message}`);
+  }
+  if (!data?.path) {
+    throw new Error('O Supabase Storage não retornou o caminho do arquivo.');
+  }
+  const publicUrl = supabaseBrowser.storage
+    .from('encartes')
+    .getPublicUrl(data.path).data.publicUrl;
+  if (!publicUrl) {
+    throw new Error('Não foi possível obter o endereço público da imagem.');
+  }
+  return publicUrl;
+}
+
+export async function deleteAdminProduct(id: string): Promise<void> {
+  const cleanId = String(id ?? '').trim();
+  if (!cleanId) throw new Error('ID do produto inválido.');
+  await supabaseBrowser.from('ofertas_relampago').delete().eq('produto_id', cleanId);
+  const { error } = await supabaseBrowser
+    .from('produtos')
+    .delete()
+    .eq('id', cleanId);
+  throwIfError(error, 'Não foi possível excluir o produto');
 }
 
 export async function persistOffer(offer: AdminOffer) {
