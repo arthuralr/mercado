@@ -1,6 +1,6 @@
 import { cache } from 'react';
 import type { Metadata } from 'next';
-import { cacheLife } from 'next/cache';
+import { cacheLife, cacheTag } from 'next/cache';
 import {
   defaultSiteSettings,
   mergeSiteSettings,
@@ -8,9 +8,10 @@ import {
 } from '@/lib/site-settings';
 import { supabase } from '@/lib/supabase';
 
-async function getCachedSiteSettings() {
+export async function getCachedSiteSettings() {
   'use cache';
-  cacheLife('minutes');
+  cacheTag('site-settings');
+  cacheLife({ stale: 30, revalidate: 1, expire: 300 });
 
   const { data, error } = await supabase
     .from(SITE_SETTINGS_TABLE)
@@ -49,6 +50,7 @@ export const getLocalSeoContext = cache(async () => {
   }
 
   return {
+    settings,
     storeName: settings.institution.storeName,
     address: primaryBranch?.address || settings.institution.address,
     city,

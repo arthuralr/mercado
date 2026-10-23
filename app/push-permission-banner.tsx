@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { BellRing, X } from 'lucide-react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+import { useSiteSettings } from './admin-data-provider';
 
 const dismissalKey = 'verdevale-push-banner-dismissed';
 const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -19,6 +20,8 @@ function decodeVapidKey(value: string) {
 }
 
 export default function PushPermissionBanner() {
+  const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
   const [supported, setSupported] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
@@ -142,7 +145,7 @@ export default function PushPermissionBanner() {
         <div>
           <p className="m-0 text-sm font-black text-slate-900">Receba ofertas e avisos</p>
           <p className="mb-0 mt-1 text-xs leading-5 text-slate-600">
-            Ative as notificações da VerdeVale. Você pode desativá-las a qualquer momento nas
+            Ative as notificações de {storeName}. Você pode desativá-las a qualquer momento nas
             configurações do navegador.
           </p>
         </div>

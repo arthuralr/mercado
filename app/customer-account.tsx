@@ -45,6 +45,7 @@ export default function CustomerAccount({ products }: { products: CatalogProduct
   const [error, setError] = useState('');
   const { addToCart } = useShoppingCart();
   const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
 
   const selectedList = lists.find((list) => list.id === selectedListId) ?? null;
   const productsById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
@@ -193,7 +194,7 @@ export default function CustomerAccount({ products }: { products: CatalogProduct
         return `• ${item.quantity}x ${product?.name ?? 'Produto indisponível'}`;
       }),
       '',
-      'VerdeVale Supermercados',
+      storeName,
     ].join('\n');
   }
 
@@ -214,7 +215,7 @@ export default function CustomerAccount({ products }: { products: CatalogProduct
       <div className="mx-auto max-w-5xl space-y-6">
         <header className="rounded-3xl bg-emerald-900 p-6 text-white sm:p-8">
           <Link href="/" className="text-sm font-bold text-emerald-100 hover:underline">← Voltar à loja</Link>
-          <h1 className="mb-2 mt-5 text-3xl font-black">Minha conta VerdeVale</h1>
+          <h1 className="mb-2 mt-5 text-3xl font-black">Minha conta · {storeName}</h1>
           <p className="m-0 max-w-2xl text-sm leading-6 text-emerald-100">Acesse seu histórico de pedidos e mantenha listas de compras sincronizadas com sua conta.</p>
         </header>
 
@@ -226,7 +227,7 @@ export default function CustomerAccount({ products }: { products: CatalogProduct
             <label className="block text-sm font-semibold">Senha<input name="password" required type="password" minLength={8} autoComplete={createAccount ? 'new-password' : 'current-password'} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-3" /><span className="mt-1 block text-xs text-slate-500">Mínimo de 8 caracteres.</span></label>
             <button disabled={busy} type="submit" className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-800 py-3 font-bold text-white disabled:opacity-60"><LogIn size={17} />{busy ? 'Aguarde…' : createAccount ? 'Criar conta' : 'Entrar'}</button>
             <button type="button" onClick={() => { setCreateAccount((value) => !value); setError(''); setMessage(''); }} className="w-full text-sm font-bold text-emerald-800 hover:underline">{createAccount ? 'Já tem uma conta? Entre' : 'Ainda não tem conta? Cadastre-se'}</button>
-            <p className="m-0 text-xs leading-5 text-slate-500">Sua senha é gerenciada pelo Supabase Auth e não é armazenada pela VerdeVale.</p>
+            <p className="m-0 text-xs leading-5 text-slate-500">Sua senha é gerenciada pelo Supabase Auth e não é armazenada por {storeName}.</p>
           </form>
         ) : (
           <>

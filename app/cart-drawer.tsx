@@ -68,6 +68,7 @@ export default function CartDrawer({
     removeFromCart,
   } = useShoppingCart();
   const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [saveListOpen, setSaveListOpen] = useState(false);
   const [listName, setListName] = useState('');
@@ -131,7 +132,7 @@ export default function CartDrawer({
   const orderMessage = useMemo(
     () =>
       [
-        '*Novo pedido — VerdeVale*',
+        `*Novo pedido — ${storeName}*`,
         '',
         `*Cliente:* ${customerName.trim()}`,
         `*Telefone:* ${customerPhone.trim()}`,
@@ -159,6 +160,7 @@ export default function CartDrawer({
       selectedPaymentMethod,
       changeFor,
       savings,
+      storeName,
       total,
     ],
   );

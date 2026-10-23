@@ -58,13 +58,17 @@ const AdminDataContext = createContext<AdminDataContextValue>({
 
 export function AdminDataProvider({
   children,
+  initialSettings,
 }: {
   children: React.ReactNode;
+  initialSettings?: SiteSettings;
 }) {
   const [flyers, setFlyers] = useState<AdminFlyer[]>([]);
   const [selectedFlyerId, setSelectedFlyerId] = useState('');
-  const [settings, setSettings] = useState(defaultSiteSettings);
-  const [settingsReady, setSettingsReady] = useState(false);
+  const [settings, setSettings] = useState<SiteSettings>(
+    initialSettings ?? defaultSiteSettings,
+  );
+  const [settingsReady, setSettingsReady] = useState(Boolean(initialSettings));
   const pathname = usePathname();
 
   useEffect(() => {
@@ -187,9 +191,40 @@ export function AdminDataProvider({
   }, [settings.brand.primaryColor, settings.brand.secondaryColor]);
 
   useEffect(() => {
+    const storeName = settings.institution.storeName.trim();
+    if (!storeName) return;
+    const primaryBranch = settings.institution.branches[0];
+    const city = primaryBranch?.city?.trim() || settings.institution.city.trim();
+    const neighborhood =
+      primaryBranch?.neighborhood?.trim() || settings.institution.neighborhood.trim();
+    const location = [neighborhood, city].filter(Boolean).join(', ');
+    const locationSuffix =
+      pathname.startsWith('/admin') || !location ? '' : ` em ${location}`;
+
+    if (document.title.includes(' | ')) {
+      const [pageTitle] = document.title.split(' | ');
+      if (pageTitle) {
+        document.title = `${pageTitle} | ${storeName}${locationSuffix}`;
+      }
+    } else if (
+      document.title === 'VerdeVale' ||
+      document.title === defaultSiteSettings.institution.storeName
+    ) {
+      document.title = storeName;
+    }
+  }, [
+    settings.institution.storeName,
+    settings.institution.city,
+    settings.institution.neighborhood,
+    settings.institution.branches,
+    pathname,
+  ]);
+
+  useEffect(() => {
     if (pathname === '/admin' || pathname.startsWith('/admin/')) return;
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     let visitorId = window.localStorage.getItem('verdevale-visitor-id');
-    if (!visitorId) {
+    if (!visitorId || !uuidPattern.test(visitorId)) {
       visitorId = window.crypto.randomUUID();
       window.localStorage.setItem('verdevale-visitor-id', visitorId);
     }
@@ -201,21 +236,21 @@ export function AdminDataProvider({
       return !window.sessionStorage.getItem(storageKey);
     });
     if (!pendingTypes.length) return;
-    void supabaseBrowser
-      .from('metricas_visita')
-      .upsert(
-        pendingTypes.map((tipo) => ({ tipo, visitante_id: visitorId, data_evento: eventDate })),
-        { onConflict: 'tipo,visitante_id,data_evento', ignoreDuplicates: true },
-      )
-      .then(({ error }) => {
-        if (error) {
-          console.error('Não foi possível registrar a métrica de visita.', error);
+
+    void Promise.all(
+      pendingTypes.map(async (tipo) => {
+        const { error } = await supabaseBrowser
+          .from('metricas_visita')
+          .insert({ tipo, visitante_id: visitorId, data_evento: eventDate });
+        if (error && error.code !== '23505') {
+          if (!isMissingRelationError(error)) {
+            console.error(`Não foi possível registrar a métrica (${tipo}).`, error);
+          }
           return;
         }
-        for (const type of pendingTypes) {
-          window.sessionStorage.setItem(`verdevale-metric-${type}-${eventDate}`, '1');
-        }
-      });
+        window.sessionStorage.setItem(`verdevale-metric-${tipo}-${eventDate}`, '1');
+      }),
+    );
   }, [pathname]);
 
   return (

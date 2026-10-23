@@ -7,6 +7,7 @@ import InstitutionalFooter from "./institutional-footer";
 import {
   getLocalBusinessStructuredData,
   getLocalPageMetadata,
+  getLocalSeoContext,
 } from "@/lib/local-seo";
 import "./globals.css";
 
@@ -21,18 +22,21 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const localMetadata = await getLocalPageMetadata({
-    title: "Supermercado com hortifrúti, açougue e entrega",
-    description:
-      "Encontre hortifrúti fresco, carnes do açougue, ofertas e entrega de supermercado na sua região.",
-    path: "/",
-  });
+  const [local, localMetadata] = await Promise.all([
+    getLocalSeoContext(),
+    getLocalPageMetadata({
+      title: "Supermercado com hortifrúti, açougue e entrega",
+      description:
+        "Encontre hortifrúti fresco, carnes do açougue, ofertas e entrega de supermercado na sua região.",
+      path: "/",
+    }),
+  ]);
   return {
     ...localMetadata,
     appleWebApp: {
       capable: true,
       statusBarStyle: "default",
-      title: "VerdeVale",
+      title: local.storeName,
     },
   };
 }
@@ -44,7 +48,10 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const localBusiness = await getLocalBusinessStructuredData();
+  const [local, localBusiness] = await Promise.all([
+    getLocalSeoContext(),
+    getLocalBusinessStructuredData(),
+  ]);
   return (
     <html
       lang="pt-BR"
@@ -57,7 +64,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             __html: JSON.stringify(localBusiness).replace(/</g, '\\u003c'),
           }}
         />
-        <AdminDataProvider>
+        <AdminDataProvider initialSettings={local.settings}>
           <CartProvider>
             <GlobalStoreChrome />
             {children}

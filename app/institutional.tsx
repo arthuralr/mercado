@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { MapPin, Clock3, Phone, ArrowRight, Leaf } from 'lucide-react';
 import { ShopHeader } from './shop-components';
@@ -90,8 +91,9 @@ export function ClubPage() {
 
 export function PrivacyPage() {
   const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
   return (
-    <PageFrame title="Política de Privacidade" intro="Informações sobre o tratamento de dados pessoais nos canais digitais VerdeVale, em linguagem clara e alinhada à LGPD.">
+    <PageFrame title="Política de Privacidade" intro={`Informações sobre o tratamento de dados pessoais nos canais digitais de ${storeName}, em linguagem clara e alinhada à LGPD.`}>
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 text-sm leading-6 text-slate-700">
         <h2 className="m-0 text-xl font-black text-slate-900">1. Dados que podem ser tratados</h2>
         <p>Podemos tratar dados de cadastro e contato, informações necessárias para pedidos, conteúdo de currículos e solicitações enviados voluntariamente, além de métricas técnicas básicas de visita. Dados de pagamento não são processados neste site.</p>
@@ -111,6 +113,7 @@ export function PrivacyPage() {
 
 export function BioPage() {
   const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
   const wa = `https://wa.me/${settings.channels.whatsappNumber.replace(/\D/g, '')}`;
   const links = settings.bioLinks.filter((item) =>
     item.enabled &&
@@ -122,10 +125,21 @@ export function BioPage() {
   return (
     <main className="flex min-h-screen justify-center bg-[radial-gradient(ellipse_at_top,_#d1fae5,_#f7f8f4_48%)] px-4 py-8">
       <section className="my-auto w-full max-w-md rounded-[2rem] border border-white bg-white/90 p-6 text-center shadow-2xl backdrop-blur sm:p-8">
-        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-800 text-white shadow-lg"><Leaf size={38} /></div>
-        <p className="mb-1 mt-5 text-2xl font-black text-emerald-950">VerdeVale</p>
+        {settings.brand.logoUrl ? (
+          <Image
+            src={settings.brand.logoUrl}
+            alt={storeName}
+            width={80}
+            height={80}
+            unoptimized
+            className="mx-auto h-20 w-20 rounded-3xl border border-slate-100 bg-white object-contain p-2 shadow-lg"
+          />
+        ) : (
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-800 text-white shadow-lg"><Leaf size={38} /></div>
+        )}
+        <p className="mb-1 mt-5 text-2xl font-black text-emerald-950">{storeName}</p>
         <p className="mb-6 mt-0 text-sm text-slate-500">Mercado fresco, do seu jeito.</p>
-        <nav aria-label="Links VerdeVale" className="space-y-3">
+        <nav aria-label={`Links ${storeName}`} className="space-y-3">
           {links.map((link) => {
             const href = link.label.toLowerCase().includes('whatsapp') && !link.url ? wa : link.url;
             return <a key={`${link.label}-${link.url}`} href={href} target={href.startsWith('http') ? '_blank' : undefined} rel={href.startsWith('http') ? 'noreferrer' : undefined} className="block rounded-2xl bg-emerald-800 px-5 py-4 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-700">{link.label}</a>;

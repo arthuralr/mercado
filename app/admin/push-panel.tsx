@@ -3,11 +3,14 @@
 import { useState, type FormEvent } from 'react';
 import { BellRing, Send } from 'lucide-react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+import { useSiteSettings } from '../admin-data-provider';
 
 const fieldClass =
   'mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm outline-none focus:border-emerald-700';
 
 export default function PushNotificationPanel() {
+  const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [link, setLink] = useState('/');
@@ -101,7 +104,7 @@ export default function PushNotificationPanel() {
             value={message}
             onChange={(event) => setMessage(event.target.value)}
             className={fieldClass}
-            placeholder="Confira as ofertas fresquinhas da VerdeVale."
+            placeholder={`Confira as ofertas fresquinhas de ${storeName}.`}
           />
           <span className="mt-1 block text-xs font-normal text-slate-500">{message.length}/240 caracteres</span>
         </label>

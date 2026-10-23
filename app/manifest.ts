@@ -1,10 +1,14 @@
 import type { MetadataRoute } from 'next';
+import { getLocalSeoContext } from '@/lib/local-seo';
 
-export default function manifest(): MetadataRoute.Manifest {
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  const { storeName } = await getLocalSeoContext();
+  const shortName = storeName.split(/\s+/)[0] || storeName;
+
   return {
-    name: 'VerdeVale Supermercados',
-    short_name: 'VerdeVale',
-    description: 'Ofertas, produtos frescos e compras do VerdeVale.',
+    name: storeName,
+    short_name: shortName,
+    description: `Ofertas, produtos frescos e compras do ${storeName}.`,
     start_url: '/',
     scope: '/',
     display: 'standalone',

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import {
   ArrowDown,
   ArrowUp,
@@ -15,7 +16,9 @@ import {
 } from 'lucide-react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { useSiteSettings } from '../admin-data-provider';
+import { revalidateSiteSettings } from '../actions/site-settings';
 import {
+  defaultSiteSettings,
   isSafeWebUrl,
   SITE_SETTINGS_TABLE,
   type SiteSettings,
@@ -63,6 +66,7 @@ function SiteSettingsFormGate() {
 }
 
 function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }) {
+  const router = useRouter();
   const { updateSettings } = useSiteSettings();
   const [draft, setDraft] = useState(initialSettings);
   const [message, setMessage] = useState('');
@@ -106,6 +110,8 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
       }
       updateSettings(draft);
       window.dispatchEvent(new Event('site-settings-changed'));
+      await revalidateSiteSettings().catch(() => undefined);
+      router.refresh();
       setMessage('Configurações da Loja publicadas com sucesso.');
     } catch (error) {
       console.error('Falha ao publicar as configurações da loja no Supabase.', error);
@@ -332,6 +338,8 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
 
       updateSettings(nextDraft);
       window.dispatchEvent(new Event('site-settings-changed'));
+      await revalidateSiteSettings().catch(() => undefined);
+      router.refresh();
       setMessage('Logotipo enviado e publicado nas configurações da loja.');
     } catch (error) {
       console.error('Falha inesperada ao enviar ou salvar o logotipo.', error);
@@ -417,7 +425,32 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
             {draft.brand.logoUrl && <button type="button" onClick={() => patch('brand', { ...draft.brand, logoUrl: '' })} className="text-xs font-semibold text-slate-600 underline">Remover logotipo</button>}
           </div>
         </div>
-        <label className={labelClass}>Nome exibido no site<input value={draft.institution.storeName} onChange={(event) => patch('institution', { ...draft.institution, storeName: event.target.value })} className={inputClass} maxLength={80} /></label>
+        <label className={labelClass}>
+          Nome exibido no site
+          <input
+            value={draft.institution.storeName}
+            onChange={(event) => {
+              const nextStoreName = event.target.value;
+              const prevStoreName = draft.institution.storeName;
+              const defaultBranchName = defaultSiteSettings.institution.branches[0].name;
+              const branches = draft.institution.branches.map((branch, index) =>
+                index === 0 &&
+                (branch.name === defaultBranchName ||
+                  branch.name === prevStoreName ||
+                  branch.name === defaultSiteSettings.institution.storeName)
+                  ? { ...branch, name: nextStoreName }
+                  : branch,
+              );
+              patch('institution', {
+                ...draft.institution,
+                storeName: nextStoreName,
+                branches,
+              });
+            }}
+            className={inputClass}
+            maxLength={80}
+          />
+        </label>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className={`${labelClass} flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3`}>
             <span>Cor principal<br /><span className="text-xs font-normal text-slate-500">Botões e destaques</span></span>

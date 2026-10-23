@@ -9,6 +9,7 @@ import PushPermissionBanner from './push-permission-banner';
 export default function GlobalStoreChrome() {
   const pathname = usePathname();
   const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
@@ -33,7 +34,7 @@ export default function GlobalStoreChrome() {
           href={whatsappUrl}
           target="_blank"
           rel="noreferrer"
-          aria-label="Fale com a VerdeVale pelo WhatsApp"
+          aria-label={`Fale com ${storeName} pelo WhatsApp`}
           className="fixed bottom-5 right-5 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-xl transition hover:scale-105"
         >
           <MessageCircle size={26} />

@@ -41,25 +41,47 @@ export async function fetchAdminOffers(): Promise<AdminOffer[]> {
     .order('data_inicio', { ascending: false });
   throwIfError(error, 'Não foi possível carregar ofertas');
 
-  const offers: AdminOffer[] = [];
-  for (const row of data ?? []) {
-    const { data: product, error: productError } = await supabaseBrowser
-      .from('produtos')
-      .select('preco_normal')
-      .eq('id', row.produto_id)
-      .maybeSingle();
-    throwIfError(productError, 'Não foi possível carregar o preço normal da oferta');
-    if (!product) continue;
-    offers.push({
+  const rows = data ?? [];
+  if (!rows.length) return [];
+
+  const productIds = [...new Set(rows.map((row) => String(row.produto_id)))];
+  const { data: products, error: productError } = await supabaseBrowser
+    .from('produtos')
+    .select('id, preco_normal')
+    .in('id', productIds);
+  throwIfError(productError, 'Não foi possível carregar o preço normal da oferta');
+
+  const normalPriceById = new Map(
+    (products ?? []).map((product) => [
+      String(product.id),
+      Number(product.preco_normal),
+    ]),
+  );
+
+  return rows.map((row) => {
+    const productId = String(row.produto_id);
+    const promoPrice = Number(row.preco_promocional);
+    const normalPrice = normalPriceById.get(productId) ?? promoPrice;
+    return {
       id: String(row.id),
-      productId: String(row.produto_id),
-      normalPrice: Number(product.preco_normal),
-      promoPrice: Number(row.preco_promocional),
-      startsAt: row.data_inicio,
-      endsAt: row.data_fim,
-    });
-  }
-  return offers;
+      productId,
+      normalPrice,
+      promoPrice,
+      startsAt: String(row.data_inicio).slice(0, 10),
+      endsAt: String(row.data_fim).slice(0, 10),
+    };
+  });
+}
+
+export async function fetchActiveOffersCount(): Promise<number> {
+  const today = currentStoreDate();
+  const { data, count, error } = await supabaseBrowser
+    .from('ofertas_relampago')
+    .select('id', { count: 'exact' })
+    .lte('data_inicio', today)
+    .gte('data_fim', today);
+  throwIfError(error, 'Não foi possível consultar as ofertas ativas de hoje');
+  return count ?? data?.length ?? 0;
 }
 
 export async function persistProduct(
@@ -221,24 +243,35 @@ export async function fetchTodayOrderCount(): Promise<number> {
     .slice(0, 10);
   const start = new Date(`${today}T00:00:00-03:00`).toISOString();
   const end = new Date(`${tomorrow}T00:00:00-03:00`).toISOString();
-  const { count, error } = await supabaseBrowser
+  const { data, count, error } = await supabaseBrowser
     .from('pedidos')
-    .select('id', { count: 'exact', head: true })
+    .select('id', { count: 'exact' })
     .gte('criado_em', start)
     .lt('criado_em', end);
   throwIfError(error, 'Não foi possível carregar os pedidos de hoje');
-  return count ?? 0;
+  return count ?? data?.length ?? 0;
 }
 
 export async function fetchTodayMetrics(): Promise<{ visits: number; flyerViews: number }> {
   const today = currentStoreDate();
   const [visits, flyerViews] = await Promise.all([
-    supabaseBrowser.from('metricas_visita').select('id', { count: 'exact', head: true }).eq('tipo', 'visit').eq('data_evento', today),
-    supabaseBrowser.from('metricas_visita').select('id', { count: 'exact', head: true }).eq('tipo', 'flyer_view').eq('data_evento', today),
+    supabaseBrowser
+      .from('metricas_visita')
+      .select('id', { count: 'exact' })
+      .eq('tipo', 'visit')
+      .eq('data_evento', today),
+    supabaseBrowser
+      .from('metricas_visita')
+      .select('id', { count: 'exact' })
+      .eq('tipo', 'flyer_view')
+      .eq('data_evento', today),
   ]);
   throwIfError(visits.error, 'Não foi possível consultar as visitas de hoje');
   throwIfError(flyerViews.error, 'Não foi possível consultar as visualizações do encarte');
-  return { visits: visits.count ?? 0, flyerViews: flyerViews.count ?? 0 };
+  return {
+    visits: visits.count ?? visits.data?.length ?? 0,
+    flyerViews: flyerViews.count ?? flyerViews.data?.length ?? 0,
+  };
 }
 
 export async function importProductPrices(

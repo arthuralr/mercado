@@ -229,6 +229,27 @@ export function mergeSiteSettings(value: unknown): SiteSettings {
         ...defaultSiteSettings.banners.campaigns.slice(1),
       ];
 
+  const resolvedStoreName =
+    typeof input.institution?.storeName === 'string' &&
+    input.institution.storeName.trim()
+      ? input.institution.storeName.trim()
+      : defaultSiteSettings.institution.storeName;
+  const rawBranches =
+    Array.isArray(input.institution?.branches) &&
+    input.institution.branches.length > 0
+      ? input.institution.branches
+      : defaultSiteSettings.institution.branches;
+  const branches = rawBranches.map((branch, index) => {
+    if (
+      index === 0 &&
+      branch.name === defaultSiteSettings.institution.branches[0].name &&
+      resolvedStoreName !== defaultSiteSettings.institution.storeName
+    ) {
+      return { ...branch, name: resolvedStoreName };
+    }
+    return branch;
+  });
+
   return {
     ...defaultSiteSettings,
     ...input,
@@ -256,9 +277,8 @@ export function mergeSiteSettings(value: unknown): SiteSettings {
     institution: {
       ...defaultSiteSettings.institution,
       ...input.institution,
-      branches: Array.isArray(input.institution?.branches)
-        ? input.institution.branches
-        : defaultSiteSettings.institution.branches,
+      storeName: resolvedStoreName,
+      branches,
       socialLinks: Array.isArray(input.institution?.socialLinks)
         ? input.institution.socialLinks.filter(
             (link): link is { id: string; name: string; url: string } =>

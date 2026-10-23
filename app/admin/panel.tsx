@@ -25,7 +25,6 @@ import {
   Pencil,
   Plus,
   Search,
-  ShieldCheck,
   Store,
   Settings2,
   Trash2,
@@ -35,7 +34,12 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import type { CatalogProduct } from '@/lib/catalog-types';
-import { useAdminData, type AdminFlyer, type AdminOffer } from '../admin-data-provider';
+import {
+  useAdminData,
+  useSiteSettings,
+  type AdminFlyer,
+  type AdminOffer,
+} from '../admin-data-provider';
 import { currentStoreDate } from '@/lib/site-settings';
 import {
   getFlyerMimeType,
@@ -45,6 +49,7 @@ import {
 } from '@/lib/flyer-file';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import {
+  fetchActiveOffersCount,
   fetchAdminOffers,
   fetchAdminProducts,
   fetchFlyers,
@@ -88,7 +93,9 @@ function localDate(daysFromToday = 0) {
 
 function isOfferActive(offer: AdminOffer) {
   const today = currentStoreDate();
-  return offer.startsAt <= today && offer.endsAt >= today;
+  const startDay = String(offer.startsAt).slice(0, 10);
+  const endDay = String(offer.endsAt).slice(0, 10);
+  return startDay <= today && endDay >= today;
 }
 
 function offerDurationDays(offer: Pick<AdminOffer, 'startsAt' | 'endsAt'>) {
@@ -185,9 +192,12 @@ export default function AdminDashboard({
 }) {
   const router = useRouter();
   const { selectFlyer, updateFlyers } = useAdminData();
+  const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
   const [products, setProducts] = useState(initialProducts);
   const [offers, setOffers] = useState<AdminOffer[]>([]);
   const [offersLoaded, setOffersLoaded] = useState(false);
+  const [activeOffersTotal, setActiveOffersTotal] = useState<number | null>(null);
   const [flyers, setFlyers] = useState<AdminFlyer[]>([]);
   const [flyer, setFlyer] = useState<AdminFlyer | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
@@ -254,72 +264,166 @@ export default function AdminDashboard({
   useEffect(() => {
     if (!authenticated) return;
     let active = true;
-    void Promise.allSettled([
-      fetchAdminProducts(),
-      fetchAdminOffers(),
-      fetchTodayOrderCount(),
-      fetchTodayMetrics(),
-      fetchFlyers(),
-    ])
-      .then(([productsResult, offersResult, ordersResult, metricsResult, flyerResult]) => {
+
+    const loadAllData = () => {
+      void Promise.allSettled([
+        fetchAdminProducts(),
+        fetchAdminOffers(),
+        fetchActiveOffersCount(),
+        fetchTodayOrderCount(),
+        fetchTodayMetrics(),
+        fetchFlyers(),
+      ])
+        .then(
+          ([
+            productsResult,
+            offersResult,
+            activeOffersCountResult,
+            ordersResult,
+            metricsResult,
+            flyerResult,
+          ]) => {
+            if (!active) return;
+            const errors: string[] = [];
+            if (productsResult.status === 'fulfilled') {
+              setProducts(productsResult.value);
+            } else {
+              errors.push(
+                productsResult.reason instanceof Error
+                  ? productsResult.reason.message
+                  : 'Não foi possível carregar os produtos.',
+              );
+            }
+            if (offersResult.status === 'fulfilled') {
+              setOffers(offersResult.value);
+              setOffersLoaded(true);
+            } else {
+              errors.push(
+                offersResult.reason instanceof Error
+                  ? offersResult.reason.message
+                  : 'Não foi possível carregar as ofertas.',
+              );
+            }
+            if (activeOffersCountResult.status === 'fulfilled') {
+              setActiveOffersTotal(activeOffersCountResult.value);
+            }
+            if (ordersResult.status === 'fulfilled') {
+              setOrderCount(ordersResult.value);
+            } else {
+              errors.push(
+                ordersResult.reason instanceof Error
+                  ? ordersResult.reason.message
+                  : 'Não foi possível carregar os pedidos de hoje.',
+              );
+            }
+            if (metricsResult.status === 'fulfilled') {
+              setTodayVisits(metricsResult.value.visits);
+              setTodayFlyerViews(metricsResult.value.flyerViews);
+            } else {
+              errors.push(
+                metricsResult.reason instanceof Error
+                  ? metricsResult.reason.message
+                  : 'Não foi possível carregar as métricas de visitas.',
+              );
+            }
+            if (flyerResult.status === 'fulfilled') {
+              setFlyers(flyerResult.value);
+            } else {
+              errors.push(
+                flyerResult.reason instanceof Error
+                  ? flyerResult.reason.message
+                  : 'Não foi possível carregar o encarte.',
+              );
+            }
+            setActionError(errors.join(' '));
+          },
+        )
+        .finally(() => {
+          if (active) setLoadingData(false);
+        });
+    };
+
+    const refreshOverviewMetrics = () => {
+      void Promise.allSettled([
+        fetchTodayOrderCount(),
+        fetchActiveOffersCount(),
+        fetchAdminOffers(),
+        fetchTodayMetrics(),
+      ]).then(([ordersResult, activeOffersResult, offersResult, metricsResult]) => {
         if (!active) return;
-        const errors: string[] = [];
-        if (productsResult.status === 'fulfilled') {
-          setProducts(productsResult.value);
-        } else {
-          errors.push(
-            productsResult.reason instanceof Error
-              ? productsResult.reason.message
-              : 'Não foi possível carregar os produtos.',
-          );
+        if (ordersResult.status === 'fulfilled') {
+          setOrderCount(ordersResult.value);
+        }
+        if (activeOffersResult.status === 'fulfilled') {
+          setActiveOffersTotal(activeOffersResult.value);
         }
         if (offersResult.status === 'fulfilled') {
           setOffers(offersResult.value);
           setOffersLoaded(true);
-        } else {
-          errors.push(
-            offersResult.reason instanceof Error
-              ? offersResult.reason.message
-              : 'Não foi possível carregar as ofertas.',
-          );
-        }
-        if (ordersResult.status === 'fulfilled') {
-          setOrderCount(ordersResult.value);
-        } else {
-          errors.push(
-            ordersResult.reason instanceof Error
-              ? ordersResult.reason.message
-              : 'Não foi possível carregar os pedidos de hoje.',
-          );
         }
         if (metricsResult.status === 'fulfilled') {
           setTodayVisits(metricsResult.value.visits);
           setTodayFlyerViews(metricsResult.value.flyerViews);
-        } else {
-          errors.push(
-            metricsResult.reason instanceof Error
-              ? metricsResult.reason.message
-              : 'Não foi possível carregar as métricas de visitas.',
-          );
         }
-        if (flyerResult.status === 'fulfilled') {
-          setFlyers(flyerResult.value);
-        } else {
-          errors.push(
-            flyerResult.reason instanceof Error
-              ? flyerResult.reason.message
-              : 'Não foi possível carregar o encarte.',
-          );
-        }
-        setActionError(errors.join(' '));
-      })
-      .finally(() => {
-        if (active) setLoadingData(false);
       });
+    };
+
+    loadAllData();
+
+    const channel = supabaseBrowser
+      .channel('admin-overview-metrics')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pedidos' },
+        refreshOverviewMetrics,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ofertas_relampago' },
+        refreshOverviewMetrics,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'metricas_visita' },
+        refreshOverviewMetrics,
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      void supabaseBrowser.removeChannel(channel);
+    };
+  }, [authenticated]);
+
+  useEffect(() => {
+    if (!authenticated || section !== 'overview') return;
+    let active = true;
+    void Promise.allSettled([
+      fetchTodayOrderCount(),
+      fetchActiveOffersCount(),
+      fetchAdminOffers(),
+      fetchTodayMetrics(),
+    ]).then(([ordersResult, activeOffersResult, offersResult, metricsResult]) => {
+      if (!active) return;
+      if (ordersResult.status === 'fulfilled') {
+        setOrderCount(ordersResult.value);
+      }
+      if (activeOffersResult.status === 'fulfilled') {
+        setActiveOffersTotal(activeOffersResult.value);
+      }
+      if (offersResult.status === 'fulfilled') {
+        setOffers(offersResult.value);
+        setOffersLoaded(true);
+      }
+      if (metricsResult.status === 'fulfilled') {
+        setTodayVisits(metricsResult.value.visits);
+        setTodayFlyerViews(metricsResult.value.flyerViews);
+      }
+    });
     return () => {
       active = false;
     };
-  }, [authenticated]);
+  }, [authenticated, section]);
 
   useEffect(
     () => () => {
@@ -338,7 +442,8 @@ export default function AdminDashboard({
     return () => window.clearTimeout(timeout);
   }, [flyer]);
 
-  const activeOffersCount = offers.filter(isOfferActive).length;
+  const activeOffersCount =
+    activeOffersTotal ?? offers.filter(isOfferActive).length;
   const filteredProducts = products.filter((product) =>
     `${product.id} ${product.name} ${product.brand} ${product.category}`
       .toLocaleLowerCase('pt-BR')
@@ -414,7 +519,12 @@ export default function AdminDashboard({
     };
     try {
       await persistOffer(offer);
-      setOffers(await fetchAdminOffers());
+      const [updatedOffers, updatedActiveCount] = await Promise.all([
+        fetchAdminOffers(),
+        fetchActiveOffersCount(),
+      ]);
+      setOffers(updatedOffers);
+      setActiveOffersTotal(updatedActiveCount);
       setOfferForm(null);
       router.refresh();
     } catch (error) {
@@ -425,7 +535,9 @@ export default function AdminDashboard({
   async function removeOffer(offer: AdminOffer) {
     try {
       await removeOfferFromDatabase(offer.id);
-      setOffers((current) => current.filter((item) => item.id !== offer.id));
+      const nextOffers = offers.filter((item) => item.id !== offer.id);
+      setOffers(nextOffers);
+      setActiveOffersTotal(nextOffers.filter(isOfferActive).length);
       router.refresh();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Não foi possível remover a oferta.');
@@ -670,7 +782,7 @@ export default function AdminDashboard({
           <span className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-800 text-white">
             <Store size={24} />
           </span>
-          <p className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Área administrativa</p>
+          <p className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Área administrativa · {storeName}</p>
           <h1 className="mb-2 mt-0 text-3xl font-black text-slate-900">Painel do gestor</h1>
           <p className="mb-7 text-sm leading-6 text-slate-500">
             Entre para gerenciar produtos, ofertas e o encarte digital.
@@ -688,10 +800,6 @@ export default function AdminDashboard({
               Entrar no painel
             </button>
           </form>
-          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-            Entre com uma conta criada no Supabase Auth e cadastrada em
-            <code className="mx-1">public.gestores</code>.
-          </div>
           {authError && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{authError}</p>}
         </section>
       </main>
@@ -706,9 +814,20 @@ export default function AdminDashboard({
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-800 text-white"><Store size={21} /></span>
+            {settings.brand.logoUrl ? (
+              <Image
+                src={settings.brand.logoUrl}
+                alt={storeName}
+                width={40}
+                height={40}
+                unoptimized
+                className="h-10 w-10 rounded-xl border border-slate-200 object-contain p-1"
+              />
+            ) : (
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-800 text-white"><Store size={21} /></span>
+            )}
             <span>
-              <strong className="block leading-5 text-emerald-950">VerdeVale</strong>
+              <strong className="block leading-5 text-emerald-950">{storeName}</strong>
               <span className="text-xs text-slate-500">Painel do gestor</span>
             </span>
             <span className="hidden rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-800 sm:inline-flex">Supabase conectado</span>
@@ -732,10 +851,6 @@ export default function AdminDashboard({
               );
             })}
           </nav>
-          <div className="mt-6 hidden rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900 lg:block">
-            <ShieldCheck size={18} className="mb-2" />
-            O acesso e as alterações são autorizados pelo Supabase Auth e pelas políticas RLS.
-          </div>
         </aside>
 
         <section className="min-w-0">
@@ -753,25 +868,19 @@ export default function AdminDashboard({
             <div className="space-y-6">
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Metric icon={CircleDollarSign} label="Pedidos hoje" value={orderCount === null ? '—' : String(orderCount)} trend="Consulta em pedidos" color="emerald" />
-                <Metric icon={BadgePercent} label="Ofertas ativas" value={offersLoaded ? String(activeOffersCount) : '—'} trend="Consulta em ofertas_relampago" color="orange" />
+                <Metric icon={BadgePercent} label="Ofertas ativas" value={offersLoaded || activeOffersTotal !== null ? String(activeOffersCount) : '—'} trend="Consulta em ofertas_relampago" color="orange" />
                 <Metric icon={Eye} label="Visualizações do encarte hoje" value={todayFlyerViews === null ? '—' : String(todayFlyerViews)} trend="Visitantes únicos/dia" color="blue" />
                 <Metric icon={Users} label="Visitas ao site hoje" value={todayVisits === null ? '—' : String(todayVisits)} trend="Visitantes únicos/dia" color="purple" />
               </div>
-              <div className="grid gap-5 xl:grid-cols-[1.3fr_1fr]">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                  <div className="mb-5 flex items-center justify-between">
-                    <div><h2 className="m-0 text-lg font-black">Atalhos de gestão</h2><p className="mb-0 mt-1 text-sm text-slate-500">Acesse as tarefas mais comuns.</p></div>
-                    <Activity className="text-emerald-700" />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <QuickAction icon={BadgePercent} label="Criar uma oferta" onClick={() => { beginOffer(); setSection('offers'); }} />
-                    <QuickAction icon={Package} label="Editar produtos" onClick={() => setSection('products')} />
-                    <QuickAction icon={FileUp} label="Atualizar encarte" onClick={() => setSection('flyer')} />
-                  </div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                <div className="mb-5 flex items-center justify-between">
+                  <div><h2 className="m-0 text-lg font-black">Atalhos de gestão</h2><p className="mb-0 mt-1 text-sm text-slate-500">Acesse as tarefas mais comuns.</p></div>
+                  <Activity className="text-emerald-700" />
                 </div>
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 sm:p-6">
-                  <div className="mb-3 flex items-center gap-2 text-amber-900"><ShieldCheck size={20} /><h2 className="m-0 text-base font-black">Métricas disponíveis</h2></div>
-                  <p className="m-0 text-sm leading-6 text-amber-900/80">Pedidos e ofertas são consultados no PostgreSQL. Visitas e visualizações do encarte contam visitantes únicos por dia na tabela metricas_visita, no fuso de São Paulo.</p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <QuickAction icon={BadgePercent} label="Criar uma oferta" onClick={() => { beginOffer(); setSection('offers'); }} />
+                  <QuickAction icon={Package} label="Editar produtos" onClick={() => setSection('products')} />
+                  <QuickAction icon={FileUp} label="Atualizar encarte" onClick={() => setSection('flyer')} />
                 </div>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
@@ -968,7 +1077,7 @@ export default function AdminDashboard({
         </section>
       </div>
 
-      <footer className="mx-auto w-full max-w-[1500px] px-4 pb-6 text-center text-xs text-slate-400 sm:px-6 lg:px-8">VerdeVale · Painel administrativo demonstrativo · Dados de pedidos e visitas são ilustrativos</footer>
+      <footer className="mx-auto w-full max-w-[1500px] px-4 pb-6 text-center text-xs text-slate-400 sm:px-6 lg:px-8">{storeName} · Painel administrativo</footer>
 
       {offerForm && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOfferForm(null); }}>

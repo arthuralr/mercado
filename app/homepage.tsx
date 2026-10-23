@@ -530,7 +530,7 @@ export default function HomePage({ products }: { products: Product[] }) {
         <section aria-label="Banners de ofertas" className="mx-auto grid max-w-7xl gap-4 px-4 pt-6 sm:grid-cols-2 lg:px-8">
           {[settings.banners.secondaryImage, settings.banners.tertiaryImage].filter(Boolean).map((image, index) => (
             <Link key={`${index}-${image}`} href="/panfleto-de-ofertas" className="relative block aspect-[2/1] overflow-hidden rounded-2xl bg-emerald-50">
-              <Image src={image} alt={`Campanha VerdeVale ${index + 1}`} fill unoptimized sizes="(max-width: 640px) 100vw, 50vw" className="object-cover" />
+              <Image src={image} alt={`Campanha ${settings.institution.storeName} ${index + 1}`} fill unoptimized sizes="(max-width: 640px) 100vw, 50vw" className="object-cover" />
             </Link>
           ))}
         </section>
@@ -648,107 +648,123 @@ export default function HomePage({ products }: { products: Product[] }) {
         </div>
       </section>
 
-      <footer className="bg-slate-950 text-slate-100">
-        <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:grid-cols-2 lg:grid-cols-4 lg:px-8">
-          <div>
-            <BrandLogo />
-            <p className="mt-4 max-w-xs text-sm leading-6 text-slate-300">
+      <footer className="border-t border-zinc-800 bg-zinc-950 text-zinc-100">
+        <div className="mx-auto grid max-w-7xl items-start gap-10 px-4 py-12 sm:grid-cols-2 lg:grid-cols-4 lg:px-8">
+          <div className="space-y-4">
+            <BrandLogo inverted />
+            <p className="m-0 max-w-xs text-sm leading-relaxed text-zinc-400">
               {settings.institution.aboutText}
             </p>
-            <div className="mt-5 flex items-center gap-1 text-amber-300" aria-label="Avaliação 4,9 de 5">
+            <div className="flex items-center gap-1 text-yellow-400" aria-label="Avaliação 4,9 de 5">
               {Array.from({ length: 5 }, (_, index) => (
-                <Star key={index} size={16} fill="currentColor" />
+                <Star key={index} size={15} fill="currentColor" />
               ))}
-              <span className="ml-2 text-xs font-semibold text-emerald-100/70">
+              <span className="ml-2 text-xs font-medium text-zinc-400">
                 4,9 de 5
               </span>
             </div>
           </div>
-          <div>
-            <h2 className="m-0 text-sm font-bold text-white">A sua loja</h2>
-            <p className="mb-2 mt-4 flex items-center gap-2 text-sm text-emerald-100/75">
-              <MapPin size={16} className="shrink-0 text-emerald-300" />
-              {activeBranchAddress}
+
+          <div className="space-y-3">
+            <h2 className="m-0 text-sm font-bold tracking-wide text-white">A sua loja</h2>
+            <p className="m-0 flex items-start gap-2.5 text-sm leading-relaxed text-zinc-400">
+              <MapPin size={16} className="mt-0.5 shrink-0 text-zinc-500" />
+              <span>{activeBranchAddress}</span>
             </p>
-            <p className="mb-0 mt-2 flex items-center gap-2 text-sm text-emerald-100/75">
-              <Clock3 size={16} className="shrink-0 text-emerald-300" />
-              {activeBranchHours}
+            <p className="m-0 flex items-start gap-2.5 text-sm leading-relaxed text-zinc-400">
+              <Clock3 size={16} className="mt-0.5 shrink-0 text-zinc-500" />
+              <span>{activeBranchHours}</span>
             </p>
             <button
               type="button"
               onClick={() => setBranchMenuOpen(true)}
-              className="mt-4 text-sm font-bold text-emerald-300 hover:text-white"
+              className="inline-flex items-center gap-1.5 pt-1 text-sm font-semibold text-zinc-300 transition-colors hover:text-white"
             >
-              Trocar de filial <ArrowRight size={14} className="ml-1 inline" />
+              Trocar de filial <ArrowRight size={14} />
             </button>
           </div>
-          <div>
-            <h2 className="m-0 text-sm font-bold text-white">Entrega e ajuda</h2>
-            <p className="mb-0 mt-4 text-sm leading-6 text-emerald-100/75">
+
+          <div className="space-y-3">
+            <h2 className="m-0 text-sm font-bold tracking-wide text-white">Entrega e ajuda</h2>
+            <p className="m-0 text-sm leading-relaxed text-zinc-400">
               Entregamos de segunda a sábado, das 8h às 21h. Pedidos feitos até
               as 17h podem chegar no mesmo dia.
             </p>
-            <a
-              href={`tel:${activeBranchPhone.replace(/\D/g, '')}`}
-              className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-300 hover:text-white"
-            >
-              <span className="rounded-full bg-emerald-900 p-2">
-                <MessageCircle size={16} />
-              </span>
-              {activeBranchPhone}
-            </a>
-            <a href={`mailto:${activeBranchDetails?.email || settings.institution.email}`} className="mt-2 block break-all text-sm text-slate-300 hover:underline">
-              {activeBranchDetails?.email || settings.institution.email}
-            </a>
+            <div className="space-y-2 pt-1">
+              <a
+                href={`tel:${activeBranchPhone.replace(/\D/g, '')}`}
+                className="inline-flex items-center gap-2.5 text-sm font-semibold text-zinc-300 transition-colors hover:text-white"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-zinc-400">
+                  <MessageCircle size={15} />
+                </span>
+                {activeBranchPhone}
+              </a>
+              <a
+                href={`mailto:${activeBranchDetails?.email || settings.institution.email}`}
+                className="block break-all text-sm text-zinc-400 transition-colors hover:text-white"
+              >
+                {activeBranchDetails?.email || settings.institution.email}
+              </a>
+            </div>
           </div>
-          <div>
-            <h2 className="m-0 text-sm font-bold text-white">Compra tranquila</h2>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-800 px-3 py-2 text-xs font-semibold text-emerald-100/80">
-                <ShieldCheck size={15} className="text-emerald-300" />
+
+          <div className="space-y-4">
+            <h2 className="m-0 text-sm font-bold tracking-wide text-white">Compra tranquila</h2>
+            <div className="flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300">
+                <ShieldCheck size={14} className="shrink-0 text-zinc-400" />
                 Site seguro
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-800 px-3 py-2 text-xs font-semibold text-emerald-100/80">
-                <Package size={15} className="text-emerald-300" />
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300">
+                <Package size={14} className="shrink-0 text-zinc-400" />
                 Entrega garantida
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-800 px-3 py-2 text-xs font-semibold text-emerald-100/80">
-                <BadgePercent size={15} className="text-emerald-300" />
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300">
+                <BadgePercent size={14} className="shrink-0 text-zinc-400" />
                 Preço justo
               </span>
             </div>
-            <p className="mb-0 mt-6 text-xs leading-5 text-emerald-100/50">
-              © {new Date().getFullYear()} {settings.institution.storeName}. Todos os direitos reservados.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold text-emerald-200">
-              <Link href="/sobre" className="hover:text-white">Quem somos</Link>
-              <Link href="/lojas" className="hover:text-white">Lojas</Link>
-              <Link href="/clube" className="hover:text-white">Clube</Link>
-              <Link href="/trabalhe-conosco" className="hover:text-white">Trabalhe conosco</Link>
-              <Link href="/privacidade" className="hover:text-white">Privacidade</Link>
-              <Link href="/bio" className="hover:text-white">Links oficiais</Link>
-              <Link href="/receitas" className="hover:text-white">Receitas</Link>
-            </div>
-            <div className="mt-3 flex gap-3 text-xs font-semibold text-emerald-200">
-              {isSafeWebUrl(settings.institution.instagram) && <a href={settings.institution.instagram} target="_blank" rel="noreferrer" className="hover:text-white">Instagram</a>}
-              {isSafeWebUrl(settings.institution.facebook) && <a href={settings.institution.facebook} target="_blank" rel="noreferrer" className="hover:text-white">Facebook</a>}
+
+            <nav aria-label="Links institucionais do rodapé" className="flex flex-wrap gap-x-4 gap-y-2 pt-1 text-xs font-medium text-zinc-400">
+              <Link href="/sobre" className="transition-colors hover:text-white">Quem somos</Link>
+              <Link href="/lojas" className="transition-colors hover:text-white">Lojas</Link>
+              <Link href="/clube" className="transition-colors hover:text-white">Clube</Link>
+              <Link href="/trabalhe-conosco" className="transition-colors hover:text-white">Trabalhe conosco</Link>
+              <Link href="/privacidade" className="transition-colors hover:text-white">Privacidade</Link>
+              <Link href="/bio" className="transition-colors hover:text-white">Links oficiais</Link>
+              <Link href="/receitas" className="transition-colors hover:text-white">Receitas</Link>
+            </nav>
+
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium text-zinc-400">
+              {isSafeWebUrl(settings.institution.instagram) && <a href={settings.institution.instagram} target="_blank" rel="noreferrer" className="transition-colors hover:text-white">Instagram</a>}
+              {isSafeWebUrl(settings.institution.facebook) && <a href={settings.institution.facebook} target="_blank" rel="noreferrer" className="transition-colors hover:text-white">Facebook</a>}
               {settings.institution.socialLinks.filter((link) => isSafeWebUrl(link.url)).map((link) => (
-                <a key={link.id} href={link.url} target="_blank" rel="noreferrer" className="hover:text-white">{link.name}</a>
+                <a key={link.id} href={link.url} target="_blank" rel="noreferrer" className="transition-colors hover:text-white">{link.name}</a>
               ))}
-              {settings.channels.ifoodEnabled && isSafeWebUrl(settings.channels.ifoodUrl) && <a href={settings.channels.ifoodUrl} target="_blank" rel="noreferrer" className="hover:text-white">Peça pelo iFood</a>}
-              {isSafeWebUrl(settings.channels.offersGroupUrl) && <a href={settings.channels.offersGroupUrl} target="_blank" rel="noreferrer" className="hover:text-white">Ofertas no WhatsApp</a>}
+              {settings.channels.ifoodEnabled && isSafeWebUrl(settings.channels.ifoodUrl) && <a href={settings.channels.ifoodUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-white">Peça pelo iFood</a>}
+              {isSafeWebUrl(settings.channels.offersGroupUrl) && <a href={settings.channels.offersGroupUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-white">Ofertas no WhatsApp</a>}
             </div>
+
             {settings.pwa.enabled && (
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 pt-1">
                 {settings.pwa.googlePlay.enabled && isSafeWebUrl(settings.pwa.googlePlay.url) && (
-                  <a href={settings.pwa.googlePlay.url} target="_blank" rel="noreferrer" className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-900 hover:bg-slate-200">Google Play</a>
+                  <a href={settings.pwa.googlePlay.url} target="_blank" rel="noreferrer" className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:border-zinc-500 hover:text-white">Google Play</a>
                 )}
                 {settings.pwa.appStore.enabled && isSafeWebUrl(settings.pwa.appStore.url) && (
-                  <a href={settings.pwa.appStore.url} target="_blank" rel="noreferrer" className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-900 hover:bg-slate-200">App Store</a>
+                  <a href={settings.pwa.appStore.url} target="_blank" rel="noreferrer" className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:border-zinc-500 hover:text-white">App Store</a>
                 )}
               </div>
             )}
-            <Link href="/admin" className="mt-5 inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 hover:text-slate-300">
+          </div>
+        </div>
+
+        <div className="border-t border-zinc-800/80">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 text-xs text-zinc-500 lg:px-8">
+            <p className="m-0">
+              © {new Date().getFullYear()} {settings.institution.storeName}. Todos os direitos reservados.
+            </p>
+            <Link href="/admin" className="inline-flex items-center gap-1 font-medium text-zinc-500 transition-colors hover:text-zinc-300">
               Acesso do gestor <ArrowRight size={11} />
             </Link>
           </div>
