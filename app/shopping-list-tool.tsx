@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react';
 import {
   Check,
   ClipboardCopy,
@@ -41,6 +48,10 @@ const QUICK_SUGGESTIONS = [
   'Ovos Brancos',
   'Pão de Forma',
   'Manteiga',
+  'Macarrão 500g',
+  'Molho de Tomate',
+  'Papel Higiênico',
+  'Sabão em Pó',
   'Detergente',
 ];
 
@@ -48,6 +59,20 @@ const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
 });
+
+function generateItemId(): string {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      // fallback below if non-secure context
+    }
+  }
+  return `item-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
 export function openQuickShoppingList() {
   if (typeof window === 'undefined') return;
@@ -81,7 +106,10 @@ function writeStoredList(items: QuickListItem[]) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     window.dispatchEvent(new CustomEvent(UPDATED_EVENT));
   } catch (error) {
-    console.error('Não foi possível salvar a lista de compras no navegador.', error);
+    console.error(
+      'Não foi possível salvar a lista de compras no navegador.',
+      error,
+    );
   }
 }
 
@@ -124,7 +152,7 @@ export function ShoppingListCalloutBanner() {
               Crie sua Lista de Compras em segundos
             </h2>
             <p className="mb-0 mt-1.5 text-sm leading-relaxed text-emerald-100">
-              Monte sua lista de supermercado, confira preços das ofertas, baixe no celular, copie o texto ou compartilhe direto no WhatsApp com um clique.
+              Monte sua lista de supermercado digitando qualquer produto ou escolhendo itens rápidos, baixe no celular, copie o texto ou compartilhe direto no WhatsApp com um clique.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -157,32 +185,54 @@ export default function QuickShoppingListModal() {
   const [items, setItems] = useState<QuickListItem[]>([]);
   const [listTitle, setListTitle] = useState('Minha Lista de Compras');
   const [itemText, setItemText] = useState('');
-  const [itemQty, setItemQty] = useState(1);
+  const [qtyInput, setQtyInput] = useState('1');
   const [feedback, setFeedback] = useState('');
+
+  const itemInputRef = useRef<HTMLInputElement>(null);
+
+  const resolvedQty = useMemo(() => {
+    const parsed = parseInt(qtyInput, 10);
+    if (Number.isNaN(parsed) || parsed < 1) return 1;
+    return Math.min(99, parsed);
+  }, [qtyInput]);
 
   useEffect(() => {
     setItems(readStoredList());
-    const savedTitle = window.localStorage.getItem(TITLE_STORAGE_KEY);
-    if (savedTitle) setListTitle(savedTitle);
+    try {
+      const savedTitle = window.localStorage.getItem(TITLE_STORAGE_KEY);
+      if (savedTitle) setListTitle(savedTitle);
+    } catch {
+      // ignore storage errors
+    }
 
     const handleOpen = () => {
       setItems(readStoredList());
       setOpen(true);
+      setTimeout(() => {
+        itemInputRef.current?.focus();
+      }, 60);
     };
     const handleSync = () => {
       setItems(readStoredList());
     };
     window.addEventListener(OPEN_EVENT, handleOpen);
     window.addEventListener(UPDATED_EVENT, handleSync);
+    window.addEventListener('storage', handleSync);
     return () => {
       window.removeEventListener(OPEN_EVENT, handleOpen);
       window.removeEventListener(UPDATED_EVENT, handleSync);
+      window.removeEventListener('storage', handleSync);
     };
   }, []);
 
-  function updateItems(next: QuickListItem[]) {
-    setItems(next);
-    writeStoredList(next);
+  function applyListUpdate(
+    updater: (prev: QuickListItem[]) => QuickListItem[],
+  ) {
+    setItems((prev) => {
+      const next = updater(prev);
+      writeStoredList(next);
+      return next;
+    });
   }
 
   function handleTitleChange(value: string) {
@@ -208,120 +258,152 @@ export default function QuickShoppingListModal() {
       .slice(0, 5);
   }, [catalogProducts, itemText]);
 
-  function addItem(
+  function insertOrIncrementInList(
+    currentList: QuickListItem[],
     rawName: string,
-    qty = 1,
+    qty: number,
     meta?: { unit?: string; price?: number },
-  ) {
+  ): QuickListItem[] {
     const cleanName = rawName.trim();
-    if (!cleanName) return;
-    const validQty = Math.max(1, Math.round(Number(qty) || 1));
+    if (!cleanName) return currentList;
+    const validQty = Math.max(1, Math.min(99, Math.round(Number(qty) || 1)));
+    const normalized = cleanName.toLocaleLowerCase('pt-BR');
 
-    const existingIndex = items.findIndex(
-      (entry) =>
-        entry.name.toLocaleLowerCase('pt-BR') ===
-        cleanName.toLocaleLowerCase('pt-BR'),
+    const existingIndex = currentList.findIndex(
+      (entry) => entry.name.toLocaleLowerCase('pt-BR') === normalized,
     );
 
     if (existingIndex >= 0) {
-      const next = items.map((entry, idx) =>
+      return currentList.map((entry, idx) =>
         idx === existingIndex
           ? {
               ...entry,
               quantity: entry.quantity + validQty,
               unit: meta?.unit ?? entry.unit,
               price: meta?.price ?? entry.price,
+              checked: false,
             }
           : entry,
       );
-      updateItems(next);
-    } else {
-      const matchedCatalog =
-        meta?.price === undefined
-          ? catalogProducts.find(
-              (product) =>
-                product.active !== false &&
-                product.name.toLocaleLowerCase('pt-BR') ===
-                  cleanName.toLocaleLowerCase('pt-BR'),
-            )
-          : undefined;
-
-      const newItem: QuickListItem = {
-        id: crypto.randomUUID(),
-        name: cleanName,
-        quantity: validQty,
-        unit: meta?.unit ?? matchedCatalog?.unit,
-        price: meta?.price ?? matchedCatalog?.price,
-        checked: false,
-      };
-      updateItems([...items, newItem]);
     }
+
+    const matchedCatalog =
+      meta?.price === undefined
+        ? catalogProducts.find(
+            (product) =>
+              product.active !== false &&
+              product.name.toLocaleLowerCase('pt-BR') === normalized,
+          )
+        : undefined;
+
+    const newItem: QuickListItem = {
+      id: generateItemId(),
+      name: cleanName,
+      quantity: validQty,
+      unit: meta?.unit ?? matchedCatalog?.unit,
+      price: meta?.price ?? matchedCatalog?.price,
+      checked: false,
+    };
+
+    return [...currentList, newItem];
+  }
+
+  function addItem(
+    rawName: string,
+    qty = 1,
+    meta?: { unit?: string; price?: number },
+    shouldFocusInput = true,
+  ) {
+    const cleanName = rawName.trim();
+    if (!cleanName) return;
+
+    applyListUpdate((prev) =>
+      insertOrIncrementInList(prev, cleanName, qty, meta),
+    );
     setItemText('');
-    setItemQty(1);
+    setQtyInput('1');
     setFeedback('');
+
+    if (shouldFocusInput) {
+      requestAnimationFrame(() => {
+        itemInputRef.current?.focus();
+      });
+    }
+  }
+
+  function submitManualEntry() {
+    const raw = itemText.trim();
+    if (!raw) {
+      itemInputRef.current?.focus();
+      return;
+    }
+
+    const parts = raw
+      .split(/[,;\n]+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (parts.length > 1) {
+      applyListUpdate((prev) => {
+        let updated = [...prev];
+        for (const part of parts) {
+          updated = insertOrIncrementInList(updated, part, resolvedQty);
+        }
+        return updated;
+      });
+      setItemText('');
+      setQtyInput('1');
+      setFeedback(`${parts.length} itens adicionados à sua lista!`);
+      requestAnimationFrame(() => {
+        itemInputRef.current?.focus();
+      });
+      return;
+    }
+
+    addItem(raw, resolvedQty, undefined, true);
   }
 
   function handleAddForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!itemText.trim()) return;
-    const parts = itemText
-      .split(/[,;\n]+/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-    if (parts.length > 1) {
-      let current = [...items];
-      for (const part of parts) {
-        const existingIdx = current.findIndex(
-          (entry) =>
-            entry.name.toLocaleLowerCase('pt-BR') ===
-            part.toLocaleLowerCase('pt-BR'),
-        );
-        if (existingIdx >= 0) {
-          current = current.map((entry, idx) =>
-            idx === existingIdx
-              ? { ...entry, quantity: entry.quantity + 1 }
-              : entry,
-          );
-        } else {
-          current.push({
-            id: crypto.randomUUID(),
-            name: part,
-            quantity: 1,
-            checked: false,
-          });
-        }
-      }
-      updateItems(current);
-      setItemText('');
-      setItemQty(1);
-      return;
+    submitManualEntry();
+  }
+
+  function handleInputKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      submitManualEntry();
     }
-    addItem(itemText, itemQty);
+  }
+
+  function stepInputQty(delta: number) {
+    const next = Math.max(1, Math.min(99, resolvedQty + delta));
+    setQtyInput(String(next));
   }
 
   function changeItemQuantity(id: string, delta: number) {
-    const next = items
-      .map((item) =>
-        item.id === id ? { ...item, quantity: item.quantity + delta } : item,
-      )
-      .filter((item) => item.quantity > 0);
-    updateItems(next);
+    applyListUpdate((prev) =>
+      prev
+        .map((item) =>
+          item.id === id ? { ...item, quantity: item.quantity + delta } : item,
+        )
+        .filter((item) => item.quantity > 0),
+    );
   }
 
   function toggleItemChecked(id: string) {
-    updateItems(
-      items.map((item) =>
+    applyListUpdate((prev) =>
+      prev.map((item) =>
         item.id === id ? { ...item, checked: !item.checked } : item,
       ),
     );
   }
 
   function removeItem(id: string) {
-    updateItems(items.filter((item) => item.id !== id));
+    applyListUpdate((prev) => prev.filter((item) => item.id !== id));
   }
 
   function clearList() {
-    updateItems([]);
+    applyListUpdate(() => []);
     setFeedback('Lista limpa.');
   }
 
@@ -336,6 +418,14 @@ export default function QuickShoppingListModal() {
       ),
     [items],
   );
+
+  const itemQuantityByNormalizedName = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of items) {
+      map.set(item.name.toLocaleLowerCase('pt-BR'), item.quantity);
+    }
+    return map;
+  }, [items]);
 
   function formatListAsText(): string {
     const title = listTitle.trim() || 'Minha Lista de Compras';
@@ -352,7 +442,10 @@ export default function QuickShoppingListModal() {
       }),
     ];
     if (estimatedTotal > 0) {
-      lines.push('', `💰 *Estimativa dos itens com preço:* ${currency.format(estimatedTotal)}`);
+      lines.push(
+        '',
+        `💰 *Estimativa dos itens com preço:* ${currency.format(estimatedTotal)}`,
+      );
     }
     lines.push('', `📍 Lista criada em ${storeName}`);
     return lines.join('\n');
@@ -367,7 +460,9 @@ export default function QuickShoppingListModal() {
       await navigator.clipboard.writeText(formatListAsText());
       setFeedback('Lista copiada para a área de transferência!');
     } catch {
-      setFeedback('Não foi possível copiar automaticamente. Verifique as permissões do navegador.');
+      setFeedback(
+        'Não foi possível copiar automaticamente. Verifique as permissões do navegador.',
+      );
     }
   }
 
@@ -397,7 +492,9 @@ export default function QuickShoppingListModal() {
 
   function handleShareWhatsApp() {
     if (!items.length) {
-      setFeedback('Adicione pelo menos um item antes de compartilhar no WhatsApp.');
+      setFeedback(
+        'Adicione pelo menos um item antes de compartilhar no WhatsApp.',
+      );
       return;
     }
     const text = formatListAsText();
@@ -439,7 +536,7 @@ export default function QuickShoppingListModal() {
                 Crie sua Lista de Compras
               </h2>
               <p className="mb-0 mt-1 text-xs text-emerald-100">
-                Adicione itens, baixe no celular, copie ou envie para o seu WhatsApp.
+                Digite qualquer produto ou escolha abaixo, baixe no celular, copie ou envie no WhatsApp.
               </p>
             </div>
             <button
@@ -468,87 +565,176 @@ export default function QuickShoppingListModal() {
             </label>
           </div>
 
-          <form onSubmit={handleAddForm} className="space-y-2.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-              Adicionar item à lista
+          <form onSubmit={handleAddForm} noValidate className="space-y-2.5">
+            <label
+              htmlFor="quick-list-manual-input"
+              className="block text-xs font-bold uppercase tracking-wider text-slate-500"
+            >
+              Adicionar item à lista (digite qualquer produto e pressione Enter)
             </label>
-            <div className="flex gap-2">
-              <div className="relative min-w-0 flex-1">
+            <div className="flex flex-wrap gap-2 sm:flex-nowrap">
+              <div className="relative min-w-0 flex-1 basis-full sm:basis-auto">
                 <Search
                   size={16}
                   className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                 />
                 <input
+                  id="quick-list-manual-input"
+                  ref={itemInputRef}
                   type="text"
+                  enterKeyHint="done"
+                  autoComplete="off"
                   value={itemText}
                   onChange={(event) => setItemText(event.target.value)}
+                  onKeyDown={handleInputKeyDown}
                   placeholder="Digite um produto (ex.: Arroz, Leite, Maçã)..."
-                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-emerald-700"
+                  className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-9 pr-8 text-sm font-medium text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/15"
                 />
+                {itemText && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setItemText('');
+                      itemInputRef.current?.focus();
+                    }}
+                    aria-label="Limpar texto digitado"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
-              <input
-                type="number"
-                min={1}
-                max={99}
-                value={itemQty}
-                onChange={(event) => setItemQty(Number(event.target.value) || 1)}
-                aria-label="Quantidade"
-                className="w-16 rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 text-center text-sm font-bold outline-none focus:border-emerald-700"
-              />
+
+              <div className="flex items-center rounded-xl border border-slate-300 bg-slate-50 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => stepInputQty(-1)}
+                  aria-label="Diminuir quantidade a adicionar"
+                  className="flex h-9 w-8 items-center justify-center rounded-lg text-slate-700 transition hover:bg-white"
+                >
+                  <Minus size={14} />
+                </button>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={99}
+                  value={qtyInput}
+                  onChange={(event) => setQtyInput(event.target.value)}
+                  onBlur={() => setQtyInput(String(resolvedQty))}
+                  onKeyDown={handleInputKeyDown}
+                  aria-label="Quantidade"
+                  className="w-10 bg-transparent text-center text-sm font-black text-slate-900 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => stepInputQty(1)}
+                  aria-label="Aumentar quantidade a adicionar"
+                  className="flex h-9 w-8 items-center justify-center rounded-lg text-slate-700 transition hover:bg-white"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+
               <button
                 type="submit"
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700"
+                onClick={(event) => {
+                  event.preventDefault();
+                  submitManualEntry();
+                }}
+                className="inline-flex flex-1 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-black text-white shadow-xs transition hover:bg-emerald-700 active:scale-[0.99] sm:flex-initial"
               >
                 <Plus size={17} />
                 Adicionar
               </button>
             </div>
 
-            {matchingCatalogProducts.length > 0 && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-2">
-                <p className="mb-1.5 mt-0 px-2 text-[11px] font-bold uppercase tracking-wider text-emerald-800">
-                  Sugestões do catálogo com preço da loja:
-                </p>
-                <div className="space-y-1">
-                  {matchingCatalogProducts.map((product) => (
-                    <button
-                      key={product.id}
-                      type="button"
-                      onClick={() =>
-                        addItem(product.name, itemQty, {
-                          unit: product.unit,
-                          price: product.price,
-                        })
-                      }
-                      className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-xs font-semibold text-slate-800 shadow-2xs transition hover:bg-emerald-100"
-                    >
-                      <span className="truncate">{product.name}</span>
-                      <span className="ml-2 shrink-0 font-black text-emerald-800">
-                        {currency.format(product.price)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+            {itemText.trim().length > 0 && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-2">
+                <button
+                  type="button"
+                  onClick={submitManualEntry}
+                  className="flex w-full items-center justify-between rounded-lg bg-emerald-800 px-3 py-2 text-left text-xs font-bold text-white shadow-2xs transition hover:bg-emerald-700"
+                >
+                  <span className="truncate">
+                    + Adicionar &ldquo;{itemText.trim()}&rdquo; ({resolvedQty}x) na lista
+                  </span>
+                  <span className="ml-2 shrink-0 rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-black uppercase">
+                    Enter ↵
+                  </span>
+                </button>
+
+                {matchingCatalogProducts.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    <p className="mb-1 mt-0 px-2 text-[11px] font-bold uppercase tracking-wider text-emerald-900">
+                      Ou escolha do catálogo com preço da loja:
+                    </p>
+                    {matchingCatalogProducts.map((product) => (
+                      <button
+                        key={product.id}
+                        type="button"
+                        onClick={() =>
+                          addItem(
+                            product.name,
+                            resolvedQty,
+                            {
+                              unit: product.unit,
+                              price: product.price,
+                            },
+                            true,
+                          )
+                        }
+                        className="flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-left text-xs font-semibold text-slate-800 shadow-2xs transition hover:bg-emerald-100"
+                      >
+                        <span className="truncate">{product.name}</span>
+                        <span className="ml-2 shrink-0 font-black text-emerald-800">
+                          {currency.format(product.price)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </form>
 
           <div>
-            <p className="mb-2 mt-0 text-xs font-bold uppercase tracking-wider text-slate-500">
-              Adição rápida de essenciais:
-            </p>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="m-0 text-xs font-bold uppercase tracking-wider text-slate-500">
+                Adição rápida de essenciais (toque para adicionar):
+              </p>
+            </div>
             <div className="flex flex-wrap gap-1.5">
-              {QUICK_SUGGESTIONS.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => addItem(suggestion, 1)}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
-                >
-                  <Plus size={12} className="text-emerald-700" />
-                  {suggestion}
-                </button>
-              ))}
+              {QUICK_SUGGESTIONS.map((suggestion) => {
+                const countInList =
+                  itemQuantityByNormalizedName.get(
+                    suggestion.toLocaleLowerCase('pt-BR'),
+                  ) ?? 0;
+                return (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => addItem(suggestion, 1, undefined, false)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition active:scale-95 ${
+                      countInList > 0
+                        ? 'border-emerald-600 bg-emerald-100 text-emerald-950 shadow-2xs hover:bg-emerald-200'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800'
+                    }`}
+                  >
+                    {countInList > 0 ? (
+                      <Check size={12} className="text-emerald-700" />
+                    ) : (
+                      <Plus size={12} className="text-emerald-700" />
+                    )}
+                    <span>{suggestion}</span>
+                    {countInList > 0 && (
+                      <span className="rounded-full bg-emerald-800 px-1.5 py-0.2 text-[10px] font-black text-white">
+                        {countInList}x
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -575,7 +761,7 @@ export default function QuickShoppingListModal() {
                   Sua lista de compras está vazia
                 </p>
                 <p className="mb-0 mt-1 text-xs text-slate-500">
-                  Digite os produtos acima ou toque nos botões de adição rápida para montar sua lista.
+                  Digite qualquer produto no campo acima e clique em &ldquo;Adicionar&rdquo; (ou Enter), ou toque nos botões de adição rápida.
                 </p>
               </div>
             ) : (
