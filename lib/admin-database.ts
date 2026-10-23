@@ -12,6 +12,12 @@ import {
   MAX_FLYER_FILE_SIZE,
 } from '@/lib/flyer-file';
 
+export interface PriceImportRow {
+  id: string;
+  preco_normal: number;
+  estoque: number | null;
+}
+
 function throwIfError(error: { message: string } | null, action: string) {
   if (error) throw new Error(`${action}: ${error.message}`);
 }
@@ -238,9 +244,100 @@ export async function fetchTodayMetrics(): Promise<{ visits: number; flyerViews:
 export async function importProductPrices(
   rows: Array<{ id: string; preco_normal: number; estoque?: number | null }>,
 ): Promise<number> {
+  const payload: PriceImportRow[] = rows.map((row, index) => {
+    const id = String(row.id ?? '').trim();
+    const precoNormal = Number(row.preco_normal);
+    const hasStock =
+      row.estoque !== undefined &&
+      row.estoque !== null &&
+      String(row.estoque).trim() !== '';
+    const estoque = hasStock ? Number(row.estoque) : null;
+
+    if (
+      !id ||
+      !Number.isFinite(precoNormal) ||
+      precoNormal < 0 ||
+      (estoque !== null && (!Number.isInteger(estoque) || estoque < 0))
+    ) {
+      throw new Error(
+        `Dados inválidos na linha ${index + 1} ao preparar envio para o Supabase.`,
+      );
+    }
+
+    return {
+      id,
+      preco_normal: Number(precoNormal.toFixed(2)),
+      estoque,
+    };
+  });
+
   const { data, error } = await supabaseBrowser.rpc('importar_precos', {
-    p_linhas: rows,
+    p_linhas: payload,
   });
   throwIfError(error, 'Não foi possível importar os preços');
-  return Number(data);
+
+  const ids = payload.map((item) => item.id);
+  const { data: existingRows, error: checkError } = await supabaseBrowser
+    .from('produtos')
+    .select('id, preco_normal, preco_oferta, estoque')
+    .in('id', ids);
+  throwIfError(checkError, 'Não foi possível confirmar os produtos importados');
+
+  const existingById = new Map(
+    (existingRows ?? []).map((item) => [String(item.id), item]),
+  );
+
+  const missingIds = ids.filter((id) => !existingById.has(id));
+  if (missingIds.length > 0) {
+    throw new Error(
+      `Produto(s) não encontrado(s) no catálogo: ${missingIds.slice(0, 5).join(', ')}`,
+    );
+  }
+
+  for (const item of payload) {
+    const current = existingById.get(item.id);
+    const currentPrice = Number(current?.preco_normal);
+    const currentStock =
+      current?.estoque === null || current?.estoque === undefined
+        ? null
+        : Number(current.estoque);
+    const needsPriceUpdate =
+      !Number.isFinite(currentPrice) ||
+      Math.abs(currentPrice - item.preco_normal) > 0.001 ||
+      current?.preco_oferta !== null;
+    const needsStockUpdate =
+      item.estoque !== null && currentStock !== item.estoque;
+
+    if (needsPriceUpdate || needsStockUpdate) {
+      const updatePatch: {
+        preco_normal: number;
+        preco_oferta: null;
+        estoque?: number;
+      } = {
+        preco_normal: item.preco_normal,
+        preco_oferta: null,
+      };
+      if (item.estoque !== null) {
+        updatePatch.estoque = item.estoque;
+      }
+      const { data: updated, error: updateError } = await supabaseBrowser
+        .from('produtos')
+        .update(updatePatch)
+        .eq('id', item.id)
+        .select('id')
+        .maybeSingle();
+      throwIfError(
+        updateError,
+        `Não foi possível atualizar o produto "${item.id}"`,
+      );
+      if (!updated) {
+        throw new Error(
+          `O produto "${item.id}" não pôde ser atualizado (verifique permissões de gestor).`,
+        );
+      }
+    }
+  }
+
+  const rpcCount = Number(data);
+  return Number.isFinite(rpcCount) && rpcCount > 0 ? rpcCount : payload.length;
 }

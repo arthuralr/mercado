@@ -9,6 +9,7 @@ import { useSiteSettings } from './admin-data-provider';
 import BrandLogo from './brand-logo';
 import CategoryShowcase from './category-showcase';
 import FlashOffersSection from './flash-offers-section';
+import { formatOfferCountdown } from './shop-components';
 import { isSafeWebUrl } from '@/lib/site-settings';
 import { useManagedProducts } from './admin-data-provider';
 import type { CatalogProduct } from '@/lib/catalog-types';
@@ -84,6 +85,7 @@ export default function HomePage({ products }: { products: Product[] }) {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [favoriteFilter, setFavoriteFilter] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [now, setNow] = useState(0);
   const {
     itemCount: cartCount,
     total: cartTotal,
@@ -100,6 +102,13 @@ export default function HomePage({ products }: { products: Product[] }) {
   const activeBranchAddress = activeBranchDetails?.address || settings.institution.address;
   const activeBranchPhone = activeBranchDetails?.phone || settings.institution.phone;
   const activeBranchHours = activeBranchDetails?.hours || settings.institution.hours;
+
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    update();
+    const interval = window.setInterval(update, 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (campaignCount < 2) return;
@@ -527,16 +536,16 @@ export default function HomePage({ products }: { products: Product[] }) {
         </section>
       )}
 
-      <CategoryShowcase
-        selected={selectedDepartment}
-        counts={departmentCounts}
-        onSelect={selectDepartment}
-      />
-
       <FlashOffersSection
         products={managedProducts}
         favorites={favorites}
         onFavorite={toggleFavorite}
+      />
+
+      <CategoryShowcase
+        selected={selectedDepartment}
+        counts={departmentCounts}
+        onSelect={selectDepartment}
       />
 
       <section
@@ -607,6 +616,7 @@ export default function HomePage({ products }: { products: Product[] }) {
               <ProductCard
                 key={product.id}
                 product={product}
+                now={now}
                 favorite={favorites.includes(product.id)}
                 onFavorite={() => toggleFavorite(product.id)}
                 onAdd={() => addToCart(product)}
@@ -751,11 +761,13 @@ export default function HomePage({ products }: { products: Product[] }) {
 
 function ProductCard({
   product,
+  now,
   favorite,
   onFavorite,
   onAdd,
 }: {
   product: Product;
+  now: number;
   favorite: boolean;
   onFavorite: () => void;
   onAdd: () => void;
@@ -764,6 +776,7 @@ function ProductCard({
   const discount = product.oldPrice
     ? Math.round((1 - product.price / product.oldPrice) * 100)
     : null;
+  const countdown = formatOfferCountdown(product.flashOfferEndsAt, now);
 
   return (
     <article className="group overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
@@ -814,6 +827,25 @@ function ProductCard({
           {product.name}
         </Link>
         <p className="mb-3 mt-0 text-[10px] text-slate-500 sm:text-xs">{product.unit}</p>
+        {product.flashOfferEndsAt && (
+          <div
+            className="mb-3 flex items-center justify-between gap-1.5 rounded-xl border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-[11px] font-bold text-orange-700"
+            aria-label={
+              countdown
+                ? `Oferta de ${product.name} termina em ${countdown.hours} horas, ${countdown.minutes} minutos e ${countdown.seconds} segundos`
+                : `Cronômetro da oferta de ${product.name}`
+            }
+            aria-live="off"
+          >
+            <span className="inline-flex items-center gap-1">
+              <Clock3 size={12} className="shrink-0 text-orange-600" />
+              <span>Termina em</span>
+            </span>
+            <span className="rounded bg-orange-600 px-1.5 py-0.5 font-mono text-[10px] font-black tracking-wider text-white sm:text-[11px]">
+              {countdown ? countdown.formatted : '--:--:--'}
+            </span>
+          </div>
+        )}
         <div className="flex min-h-11 items-end justify-between gap-1">
           <div className="min-w-0">
             {product.oldPrice && (

@@ -1,10 +1,12 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
   ArrowLeft,
   ChevronRight,
+  Clock3,
   Minus,
   Plus,
   Heart,
@@ -22,6 +24,32 @@ const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
 });
+
+export function formatOfferCountdown(
+  endsAt: string | undefined,
+  now: number,
+): {
+  remainingSeconds: number;
+  hours: number;
+  minutes: number;
+  seconds: number;
+  formatted: string;
+} | null {
+  if (!endsAt || now <= 0) return null;
+  const endMs = Date.parse(endsAt);
+  if (Number.isNaN(endMs)) return null;
+  const remainingSeconds = Math.max(0, Math.ceil((endMs - now) / 1000));
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+  return {
+    remainingSeconds,
+    hours,
+    minutes,
+    seconds,
+    formatted: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`,
+  };
+}
 
 export function ShopHeader() {
   const { itemCount, total, openCart } = useShoppingCart();
@@ -138,55 +166,92 @@ export function ProductCard({
   product: sourceProduct,
   favorite,
   onFavorite,
+  now: externalNow,
 }: {
   product: CatalogProduct;
   favorite?: boolean;
   onFavorite?: () => void;
+  now?: number;
 }) {
   const product = useManagedProduct(sourceProduct);
   const { settings } = useSiteSettings();
   const { cart, addToCart, changeQuantity } = useShoppingCart();
+  const [localNow, setLocalNow] = useState(0);
+
+  useEffect(() => {
+    if (externalNow !== undefined || !product.flashOfferEndsAt) return;
+    const update = () => setLocalNow(Date.now());
+    update();
+    const interval = window.setInterval(update, 1000);
+    return () => window.clearInterval(interval);
+  }, [externalNow, product.flashOfferEndsAt]);
+
   if (product.active === false) return null;
   const quantity = cart.find((item) => item.product.id === product.id)?.quantity ?? 0;
   const discount = product.oldPrice
     ? Math.round((1 - product.price / product.oldPrice) * 100)
     : 0;
+  const currentNow = externalNow ?? localNow;
+  const countdown = formatOfferCountdown(product.flashOfferEndsAt, currentNow);
 
   return (
     <article className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md">
-      <Link href={`/produtos/${product.id}`} aria-label={`Ver detalhes de ${product.name}`}>
-        <div className="relative aspect-square">
+      <div className="relative aspect-square">
+        <Link
+          href={`/produtos/${product.id}`}
+          aria-label={`Ver detalhes de ${product.name}`}
+          className="absolute inset-0 block"
+        >
           <ProductImage product={product} className="absolute inset-0" />
-          {discount > 0 && (
-            <span className="absolute left-2 top-2 rounded-full bg-orange-500 px-2.5 py-1 text-xs font-black text-white">
-              -{discount}%
-            </span>
-          )}
-          {onFavorite && (
-            <button
-              type="button"
-              onClick={onFavorite}
-              aria-label={
-                favorite
-                  ? `Remover ${product.name} dos favoritos`
-                  : `Adicionar ${product.name} aos favoritos`
-              }
-              aria-pressed={favorite}
-              className={`absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 shadow-sm ${
-                favorite ? 'text-rose-500' : 'text-slate-500 hover:text-rose-500'
-              }`}
-            >
-              <Heart size={17} fill={favorite ? 'currentColor' : 'none'} />
-            </button>
-          )}
-        </div>
-      </Link>
+        </Link>
+        {discount > 0 && (
+          <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-orange-500 px-2.5 py-1 text-xs font-black text-white shadow-sm">
+            -{discount}%
+          </span>
+        )}
+        {onFavorite && (
+          <button
+            type="button"
+            onClick={onFavorite}
+            aria-label={
+              favorite
+                ? `Remover ${product.name} dos favoritos`
+                : `Adicionar ${product.name} aos favoritos`
+            }
+            aria-pressed={favorite}
+            className={`absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 shadow-sm ${
+              favorite ? 'text-rose-500' : 'text-slate-500 hover:text-rose-500'
+            }`}
+          >
+            <Heart size={17} fill={favorite ? 'currentColor' : 'none'} />
+          </button>
+        )}
+      </div>
       <div className="p-4">
         <p className="mb-1 mt-0 text-xs font-semibold text-emerald-700">{product.category}</p>
         <Link href={`/produtos/${product.id}`} className="line-clamp-2 min-h-10 text-sm font-bold text-slate-800 hover:text-emerald-800">
           {product.name}
         </Link>
         <p className="mb-3 mt-1 text-xs text-slate-500">{product.unit} · {product.brand}</p>
+        {product.flashOfferEndsAt && (
+          <div
+            className="mb-3 flex items-center justify-between gap-1.5 rounded-xl border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-700"
+            aria-label={
+              countdown
+                ? `Oferta de ${product.name} termina em ${countdown.hours} horas, ${countdown.minutes} minutos e ${countdown.seconds} segundos`
+                : `Cronômetro da oferta de ${product.name}`
+            }
+            aria-live="off"
+          >
+            <span className="inline-flex items-center gap-1">
+              <Clock3 size={13} className="shrink-0 text-orange-600" />
+              <span>Termina em</span>
+            </span>
+            <span className="rounded bg-orange-600 px-1.5 py-0.5 font-mono text-[11px] font-black tracking-wider text-white">
+              {countdown ? countdown.formatted : '--:--:--'}
+            </span>
+          </div>
+        )}
         <div className="flex items-end justify-between gap-2">
           <div>
             {product.oldPrice !== null && (

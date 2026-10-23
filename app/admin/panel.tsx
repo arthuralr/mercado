@@ -13,6 +13,7 @@ import {
   Check,
   ChevronRight,
   CircleDollarSign,
+  Download,
   Eye,
   FileSpreadsheet,
   FileUp,
@@ -55,6 +56,7 @@ import {
   persistOffer,
   persistProduct,
   removeOffer as removeOfferFromDatabase,
+  type PriceImportRow,
 } from '@/lib/admin-database';
 import AdminExtraPanel from './extra-panel';
 import PushNotificationPanel from './push-panel';
@@ -95,21 +97,63 @@ function offerDurationDays(offer: Pick<AdminOffer, 'startsAt' | 'endsAt'>) {
   return Math.floor((end - start) / 86_400_000) + 1;
 }
 
+function normalizeHeaderName(value: string): string {
+  return value
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function parseCsvPrice(raw: string | undefined): number {
+  if (!raw) return Number.NaN;
+  const cleaned = raw
+    .replace(/R\$/gi, '')
+    .replace(/\s+/g, '')
+    .trim();
+  if (!cleaned) return Number.NaN;
+  const normalized =
+    cleaned.includes(',') && cleaned.includes('.')
+      ? cleaned.replace(/\./g, '').replace(',', '.')
+      : cleaned.replace(',', '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : Number.NaN;
+}
+
+function parseCsvStock(raw: string | undefined): number | null {
+  if (raw === undefined) return null;
+  const cleaned = raw.trim();
+  if (!cleaned) return null;
+  const normalized = cleaned.replace(',', '.');
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+    return Number.NaN;
+  }
+  return parsed;
+}
+
 function parseCsv(text: string): string[][] {
-  const delimiter = (text.split(/\r?\n/, 1)[0].match(/;/g) ?? []).length >
-    (text.split(/\r?\n/, 1)[0].match(/,/g) ?? []).length
-    ? ';'
-    : ',';
+  const cleanedSource = text
+    .replace(/^\uFEFF/, '')
+    .replace(/^\s*sep\s*=\s*[;,]\s*\r?\n/i, '');
+  const firstNonEmptyLine =
+    cleanedSource
+      .split(/\r?\n/)
+      .find((line) => line.trim().length > 0) ?? '';
+  const semicolonCount = (firstNonEmptyLine.match(/;/g) ?? []).length;
+  const commaCount = (firstNonEmptyLine.match(/,/g) ?? []).length;
+  const delimiter = semicolonCount >= commaCount && semicolonCount > 0 ? ';' : commaCount > 0 ? ',' : ';';
+
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';
   let quoted = false;
-  const source = text.replace(/^\uFEFF/, '');
 
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
+  for (let index = 0; index < cleanedSource.length; index += 1) {
+    const character = cleanedSource[index];
     if (character === '"') {
-      if (quoted && source[index + 1] === '"') {
+      if (quoted && cleanedSource[index + 1] === '"') {
         field += '"';
         index += 1;
       } else {
@@ -119,7 +163,7 @@ function parseCsv(text: string): string[][] {
       row.push(field.trim());
       field = '';
     } else if ((character === '\n' || character === '\r') && !quoted) {
-      if (character === '\r' && source[index + 1] === '\n') index += 1;
+      if (character === '\r' && cleanedSource[index + 1] === '\n') index += 1;
       row.push(field.trim());
       if (row.some((value) => value !== '')) rows.push(row);
       row = [];
@@ -162,6 +206,8 @@ export default function AdminDashboard({
   >({});
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvMessage, setCsvMessage] = useState('');
+  const [csvError, setCsvError] = useState('');
+  const [importingCsv, setImportingCsv] = useState(false);
   const [flyerFile, setFlyerFile] = useState<File | null>(null);
   const [flyerTitle, setFlyerTitle] = useState('');
   const [flyerValidUntil, setFlyerValidUntil] = useState('');
@@ -294,7 +340,7 @@ export default function AdminDashboard({
 
   const activeOffersCount = offers.filter(isOfferActive).length;
   const filteredProducts = products.filter((product) =>
-    `${product.name} ${product.brand} ${product.category}`
+    `${product.id} ${product.name} ${product.brand} ${product.category}`
       .toLocaleLowerCase('pt-BR')
       .includes(search.toLocaleLowerCase('pt-BR')),
   );
@@ -409,40 +455,115 @@ export default function AdminDashboard({
     }
   }
 
+  function exportCurrentProductsCsv() {
+    const header = 'id;preco_normal;estoque';
+    const lines = products.map((product) => {
+      const normalPrice = (product.oldPrice ?? product.price).toFixed(2).replace('.', ',');
+      const stock = product.stock === null || product.stock === undefined ? '' : String(product.stock);
+      return `${product.id};${normalPrice};${stock}`;
+    });
+    const csvContent = `\uFEFF${[header, ...lines].join('\r\n')}`;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `produtos-precos-${localDate()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function importPriceList() {
-    if (!csvFile) return;
+    if (!csvFile || importingCsv) return;
     setCsvMessage('');
+    setCsvError('');
+    setImportingCsv(true);
     try {
       const csvRows = parseCsv(await csvFile.text());
-      if (csvRows.length < 2) throw new Error('O CSV precisa conter cabeçalho e ao menos uma linha.');
-      const headers = csvRows[0].map((header) => header.toLowerCase().trim());
+      if (csvRows.length < 2) {
+        throw new Error('O CSV precisa conter cabeçalho e ao menos uma linha.');
+      }
+      const headers = csvRows[0].map(normalizeHeaderName);
       const idIndex = headers.indexOf('id');
-      const priceIndex = headers.indexOf('preco_normal');
+      const priceIndex = headers.findIndex(
+        (header) => header === 'preco_normal' || header === 'preco',
+      );
       const stockIndex = headers.indexOf('estoque');
       if (idIndex < 0 || priceIndex < 0) {
-        throw new Error('Use as colunas obrigatórias "id" e "preco_normal"; "estoque" é opcional.');
+        throw new Error(
+          'Use as colunas obrigatórias "id" e "preco_normal"; "estoque" é opcional.',
+        );
       }
+
       const ids = new Set<string>();
-      const rows = csvRows.slice(1).map((values, index) => {
-        const id = values[idIndex]?.trim();
-        const rawPrice = values[priceIndex]?.trim().replace(',', '.');
-        const price = Number(rawPrice);
-        const stockInput = stockIndex < 0 ? '' : values[stockIndex]?.trim() ?? '';
-        const stock = stockInput ? Number(stockInput) : null;
-        if (!id || !Number.isFinite(price) || price < 0 || (stock !== null && (!Number.isInteger(stock) || stock < 0))) {
-          throw new Error(`Dados inválidos na linha ${index + 2}. Confira ID, preço e estoque.`);
+      const rows: PriceImportRow[] = csvRows.slice(1).map((values, index) => {
+        const id = (values[idIndex] ?? '').replace(/^["']+|["']+$/g, '').trim();
+        const price = parseCsvPrice(values[priceIndex]);
+        const stock = stockIndex < 0 ? null : parseCsvStock(values[stockIndex]);
+
+        if (
+          !id ||
+          !Number.isFinite(price) ||
+          price < 0 ||
+          (stock !== null && (!Number.isInteger(stock) || stock < 0))
+        ) {
+          throw new Error(
+            `Dados inválidos na linha ${index + 2}. Confira ID, preço e estoque.`,
+          );
         }
-        if (ids.has(id)) throw new Error(`O produto "${id}" aparece mais de uma vez no CSV.`);
+        if (ids.has(id)) {
+          throw new Error(`O produto "${id}" aparece mais de uma vez no CSV.`);
+        }
         ids.add(id);
-        return { id, preco_normal: price, ...(stockIndex >= 0 ? { estoque: stock } : {}) };
+        return {
+          id,
+          preco_normal: price,
+          estoque: stock,
+        };
       });
+
       const updatedCount = await importProductPrices(rows);
-      setProducts(await fetchAdminProducts());
+
+      const updatesById = new Map(rows.map((item) => [item.id, item]));
+      setProductDrafts((current) => {
+        const next = { ...current };
+        for (const id of updatesById.keys()) {
+          delete next[id];
+        }
+        return next;
+      });
+
+      setProducts((current) =>
+        current.map((product) => {
+          const imported = updatesById.get(product.id);
+          if (!imported) return product;
+          return {
+            ...product,
+            price: imported.preco_normal,
+            oldPrice: null,
+            stock: imported.estoque !== null ? imported.estoque : product.stock,
+          };
+        }),
+      );
+
+      const refreshedProducts = await fetchAdminProducts();
+      setProducts(refreshedProducts);
+
       setCsvFile(null);
-      setCsvMessage(`${updatedCount} preço(s) importado(s) e aplicado(s) ao catálogo.`);
+      if (csvInput.current) {
+        csvInput.current.value = '';
+      }
+      setCsvMessage(
+        `${updatedCount} produto(s) atualizado(s) com sucesso no catálogo.`,
+      );
       router.refresh();
     } catch (error) {
-      setCsvMessage(error instanceof Error ? error.message : 'Não foi possível importar a lista.');
+      setCsvError(
+        error instanceof Error ? error.message : 'Não foi possível importar a lista.',
+      );
+    } finally {
+      setImportingCsv(false);
     }
   }
 
@@ -703,9 +824,12 @@ export default function AdminDashboard({
           {section === 'products' && (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <label className="flex min-w-64 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5"><Search size={18} className="text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por produto, marca ou categoria" className="w-full bg-transparent text-sm outline-none" aria-label="Buscar produtos no painel" /></label>
-                <button type="button" onClick={() => csvInput.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-50"><FileSpreadsheet size={17} /> Importar lista CSV</button>
-                <input ref={csvInput} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => { setCsvFile(event.target.files?.[0] ?? null); setCsvMessage(''); }} />
+                <label className="flex min-w-64 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5"><Search size={18} className="text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por ID, produto, marca ou categoria" className="w-full bg-transparent text-sm outline-none" aria-label="Buscar produtos no painel" /></label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={exportCurrentProductsCsv} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"><Download size={17} /> Baixar CSV atual</button>
+                  <button type="button" onClick={() => csvInput.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-50"><FileSpreadsheet size={17} /> Importar lista CSV</button>
+                </div>
+                <input ref={csvInput} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; event.target.value = ''; setCsvFile(file); setCsvMessage(''); setCsvError(''); }} />
               </div>
               <aside aria-label="Ajuda para importar arquivo CSV" className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 sm:p-5">
                 <div className="flex items-start gap-3">
@@ -725,8 +849,46 @@ export default function AdminDashboard({
                   </div>
                 </div>
               </aside>
-              {csvFile && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm"><span><strong>{csvFile.name}</strong> selecionado · cabeçalhos <code>id;preco_normal;estoque</code></span><div className="flex gap-2"><button type="button" onClick={() => void importPriceList()} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white">Importar preços</button><button type="button" onClick={() => { setCsvFile(null); setCsvMessage(''); }} aria-label="Cancelar seleção de CSV" className="rounded-lg p-2 text-slate-600 hover:bg-white"><X size={16} /></button></div></div>}
-              {csvMessage && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{csvMessage}</p>}
+              {csvFile && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm">
+                  <span>
+                    <strong>{csvFile.name}</strong> selecionado · cabeçalhos <code>id;preco_normal;estoque</code>
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={importingCsv}
+                      onClick={() => void importPriceList()}
+                      className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                    >
+                      {importingCsv ? 'Importando...' : 'Importar preços'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={importingCsv}
+                      onClick={() => {
+                        setCsvFile(null);
+                        setCsvMessage('');
+                        setCsvError('');
+                      }}
+                      aria-label="Cancelar seleção de CSV"
+                      className="rounded-lg p-2 text-slate-600 hover:bg-white"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+              {csvError && (
+                <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">
+                  {csvError}
+                </p>
+              )}
+              {csvMessage && (
+                <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">
+                  {csvMessage}
+                </p>
+              )}
               <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
                 <table className="w-full min-w-[820px] border-collapse text-left">
                   <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3 font-bold">Produto</th><th className="px-4 py-3 font-bold">Categoria</th><th className="px-4 py-3 font-bold">Preço (R$)</th><th className="px-4 py-3 font-bold">Estoque</th><th className="px-4 py-3 font-bold">Status</th><th className="px-4 py-3 font-bold">Ação</th></tr></thead>
@@ -735,7 +897,7 @@ export default function AdminDashboard({
                       const active = product.active ?? true;
                       const draft = productDrafts[product.id];
                       return <tr key={product.id} className="align-middle">
-                        <td className="max-w-72 px-4 py-3"><span className="block truncate text-sm font-bold">{product.name}</span><span className="text-xs text-slate-500">{product.brand}</span></td>
+                        <td className="max-w-72 px-4 py-3"><span className="block truncate text-sm font-bold">{product.name}</span><span className="block truncate text-xs text-slate-500">{product.brand} · <code className="text-[11px] text-slate-400">ID: {product.id}</code></span></td>
                         <td className="px-4 py-3 text-sm text-slate-600">{product.category}</td>
                         <td className="px-4 py-3"><input type="number" min="0" step="0.01" aria-label={`Preço de ${product.name}`} value={draft?.price ?? String(product.oldPrice ?? product.price)} onChange={(event) => setProductDrafts((current) => ({ ...current, [product.id]: { price: event.target.value, stock: current[product.id]?.stock ?? String(product.stock ?? '') } }))} className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-sm" /></td>
                         <td className="px-4 py-3"><input type="number" min="0" step="1" aria-label={`Estoque de ${product.name}`} value={draft?.stock ?? String(product.stock ?? '')} onChange={(event) => setProductDrafts((current) => ({ ...current, [product.id]: { price: current[product.id]?.price ?? String(product.oldPrice ?? product.price), stock: event.target.value } }))} className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-sm" /></td>

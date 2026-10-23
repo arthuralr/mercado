@@ -3,6 +3,17 @@ import { supabase } from '@/lib/supabase';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import { mapProductRows, type ProductRow } from '@/lib/catalog-mapper';
 
+export function resolveOfferEndsAt(dataFim: string): string {
+  const trimmed = String(dataFim).trim();
+  const isoCandidate = trimmed.includes('T')
+    ? trimmed
+    : `${trimmed.slice(0, 10)}T23:59:59.999-03:00`;
+  const parsed = new Date(isoCandidate);
+  return Number.isNaN(parsed.getTime())
+    ? new Date(`${trimmed.slice(0, 10)}T23:59:59.999-03:00`).toISOString()
+    : parsed.toISOString();
+}
+
 async function queryProducts(activeOnly: boolean): Promise<CatalogProduct[]> {
   const { data, error } = await supabase
     .from('produtos')
@@ -43,17 +54,17 @@ export const getCatalogProducts = cache(async (): Promise<CatalogProduct[]> => {
     const productOffers = (offers ?? []).filter(
       (offer) => String(offer.produto_id) === product.id,
     );
-    const activeOffer = productOffers.find(
-      (offer) => offer.data_inicio <= today && offer.data_fim >= today,
-    );
+    const activeOffer = productOffers.find((offer) => {
+      const startDay = String(offer.data_inicio).slice(0, 10);
+      const endDay = String(offer.data_fim).slice(0, 10);
+      return startDay <= today && endDay >= today;
+    });
     if (activeOffer) {
       return {
         ...product,
         price: Number(activeOffer.preco_promocional),
         oldPrice: Number(product.oldPrice ?? product.price),
-        flashOfferEndsAt: new Date(
-          `${activeOffer.data_fim}T23:59:59.999-03:00`,
-        ).toISOString(),
+        flashOfferEndsAt: resolveOfferEndsAt(activeOffer.data_fim),
       };
     }
     if (productOffers.length) {
