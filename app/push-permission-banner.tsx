@@ -3,20 +3,75 @@
 import { useEffect, useState } from 'react';
 import { BellRing, X } from 'lucide-react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
+import { getPublicVapidKey, urlBase64ToUint8Array } from '@/lib/vapid-config';
 import { useSiteSettings } from './admin-data-provider';
 
 const dismissalKey = 'verdevale-push-banner-dismissed';
-const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+const vapidPublicKey = getPublicVapidKey();
 
-function decodeVapidKey(value: string) {
-  const padding = '='.repeat((4 - (value.length % 4)) % 4);
-  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = window.atob(base64);
-  const key = new Uint8Array(raw.length);
-  for (let index = 0; index < raw.length; index += 1) {
-    key[index] = raw.charCodeAt(index);
+function keysMatch(existingBuffer: ArrayBuffer | null, expectedKey: Uint8Array): boolean {
+  if (!existingBuffer) return true;
+  const existing = new Uint8Array(existingBuffer);
+  if (existing.byteLength !== expectedKey.byteLength) return false;
+  for (let i = 0; i < existing.byteLength; i += 1) {
+    if (existing[i] !== expectedKey[i]) return false;
   }
-  return key;
+  return true;
+}
+
+export async function subscribeBrowserToPush(): Promise<PushSubscription> {
+  if (
+    !window.isSecureContext ||
+    !('serviceWorker' in navigator) ||
+    !('PushManager' in window) ||
+    !('Notification' in window)
+  ) {
+    throw new Error('Este navegador não suporta notificações Web Push.');
+  }
+
+  const registration = await navigator.serviceWorker.register('/sw.js');
+  await navigator.serviceWorker.ready;
+
+  const expectedServerKey = urlBase64ToUint8Array(vapidPublicKey);
+  let subscription = await registration.pushManager.getSubscription();
+
+  if (
+    subscription &&
+    !keysMatch(subscription.options?.applicationServerKey ?? null, expectedServerKey)
+  ) {
+    await subscription.unsubscribe().catch(() => undefined);
+    subscription = null;
+  }
+
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: expectedServerKey,
+    });
+  }
+
+  const { data } = await supabaseBrowser.auth.getSession();
+  const response = await fetch('/api/push/subscribe', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(data.session?.access_token
+        ? { Authorization: `Bearer ${data.session.access_token}` }
+        : {}),
+    },
+    body: JSON.stringify(subscription.toJSON()),
+  });
+
+  const result: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const reason =
+      result && typeof result === 'object' && 'error' in result
+        ? String(result.error)
+        : 'Não foi possível salvar a inscrição.';
+    throw new Error(reason);
+  }
+
+  return subscription;
 }
 
 export default function PushPermissionBanner() {
@@ -52,16 +107,27 @@ export default function PushPermissionBanner() {
       }
     });
 
-    void navigator.serviceWorker.ready
-      .then((registration) => registration.pushManager.getSubscription())
-      .then((subscription) => {
-        if (active && subscription) setSubscribed(true);
-      })
-      .catch((caught: unknown) => {
-        if (active) {
-          setError(caught instanceof Error ? caught.message : 'Não foi possível verificar as notificações.');
+    void (async () => {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const existing = await registration.pushManager.getSubscription();
+        if (existing) {
+          if (active) setSubscribed(true);
+          void subscribeBrowserToPush().catch(() => undefined);
+        } else if (Notification.permission === 'granted') {
+          await subscribeBrowserToPush();
+          if (active) setSubscribed(true);
         }
-      });
+      } catch (caught: unknown) {
+        if (active) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : 'Não foi possível verificar as notificações.',
+          );
+        }
+      }
+    })();
 
     return () => {
       active = false;
@@ -85,44 +151,24 @@ export default function PushPermissionBanner() {
     setBusy(true);
     setError('');
     try {
-      const granted = permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      const granted =
+        permission === 'granted' ? 'granted' : await Notification.requestPermission();
       setPermission(granted);
       if (granted !== 'granted') {
-        setError('A permissão não foi concedida. Você pode alterá-la nas configurações do navegador.');
+        setError(
+          'A permissão não foi concedida. Você pode alterá-la nas configurações do navegador.',
+        );
         return;
       }
 
-      const registration = await navigator.serviceWorker.ready;
-      const subscription =
-        (await registration.pushManager.getSubscription()) ??
-        (await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: decodeVapidKey(vapidPublicKey),
-        }));
-      const { data, error: sessionError } = await supabaseBrowser.auth.getSession();
-      if (sessionError) throw new Error(`Não foi possível verificar a sessão: ${sessionError.message}`);
-
-      const response = await fetch('/api/push/subscribe', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(data.session?.access_token
-            ? { Authorization: `Bearer ${data.session.access_token}` }
-            : {}),
-        },
-        body: JSON.stringify(subscription.toJSON()),
-      });
-      const result: unknown = await response.json();
-      if (!response.ok) {
-        const reason =
-          result && typeof result === 'object' && 'error' in result
-            ? String(result.error)
-            : 'Não foi possível salvar a inscrição.';
-        throw new Error(reason);
-      }
+      await subscribeBrowserToPush();
       setSubscribed(true);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Não foi possível ativar as notificações.');
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Não foi possível ativar as notificações.',
+      );
     } finally {
       setBusy(false);
     }
@@ -150,7 +196,11 @@ export default function PushPermissionBanner() {
           </p>
         </div>
       </div>
-      {error && <p role="alert" className="mb-0 mt-3 rounded-lg bg-rose-50 p-2 text-xs text-rose-800">{error}</p>}
+      {error && (
+        <p role="alert" className="mb-0 mt-3 rounded-lg bg-rose-50 p-2 text-xs text-rose-800">
+          {error}
+        </p>
+      )}
       <button
         type="button"
         onClick={() => void subscribe()}

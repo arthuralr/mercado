@@ -36,7 +36,12 @@ export default function PushNotificationPanel() {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ title, message, link }),
+        body: JSON.stringify({
+          title,
+          message,
+          link,
+          icon: settings.brand.logoUrl || '/icon.png',
+        }),
       });
       const result: unknown = await response.json();
       if (!response.ok) {

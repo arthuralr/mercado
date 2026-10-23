@@ -1,5 +1,9 @@
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
-import type { PushSubscription } from 'web-push';
+import webpush, { type PushSubscription } from 'web-push';
+import { getPublicVapidKey, getServerVapidConfig } from './vapid-config';
 
 const allowedPushHosts = [
   'fcm.googleapis.com',
@@ -9,15 +13,192 @@ const allowedPushHosts = [
   '.notify.windows.com',
 ];
 
-export function createPushServiceClient() {
+const FALLBACK_STORE_PATH = path.join(
+  os.tmpdir(),
+  'supermarket-fresh-push-subscriptions.json',
+);
+
+export interface StoredPushSubscriptionRow {
+  endpoint: string;
+  subscription: PushSubscription;
+  usuario_id?: string | null;
+  atualizado_em?: string;
+}
+
+export function initializeWebPush() {
+  const { publicKey, privateKey, subject } = getServerVapidConfig();
+  webpush.setVapidDetails(subject, publicKey, privateKey);
+  return {
+    webpush,
+    publicKey: getPublicVapidKey(),
+    subject,
+  };
+}
+
+export function createPushServiceClient(request?: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRoleKey) {
-    throw new Error('Configure NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no servidor.');
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  const key = serviceRoleKey || anonKey;
+
+  if (!url || !key) {
+    throw new Error(
+      'Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY (ou SUPABASE_SERVICE_ROLE_KEY) no servidor.',
+    );
   }
-  return createClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+
+  const authorization = request?.headers.get('authorization');
+  return createClient(url, key, {
+    ...( !serviceRoleKey && authorization
+      ? { global: { headers: { Authorization: authorization } } }
+      : {}),
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
   });
+}
+
+async function readFallbackSubscriptions(): Promise<StoredPushSubscriptionRow[]> {
+  try {
+    const raw = await fs.readFile(FALLBACK_STORE_PATH, 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is StoredPushSubscriptionRow =>
+        Boolean(item) &&
+        typeof item === 'object' &&
+        'endpoint' in item &&
+        typeof item.endpoint === 'string' &&
+        'subscription' in item &&
+        isPushSubscription(item.subscription),
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function writeFallbackSubscriptions(rows: StoredPushSubscriptionRow[]): Promise<void> {
+  try {
+    await fs.writeFile(FALLBACK_STORE_PATH, JSON.stringify(rows, null, 2), 'utf8');
+  } catch {
+    // Ignore read-only filesystem errors in serverless environments when Supabase is primary
+  }
+}
+
+export async function savePushSubscriptionRecord(
+  subscription: PushSubscription,
+  userId: string | null,
+  request?: Request,
+): Promise<void> {
+  const nowIso = new Date().toISOString();
+  const existingFallback = await readFallbackSubscriptions();
+  const nextFallback = [
+    {
+      endpoint: subscription.endpoint,
+      subscription,
+      usuario_id: userId,
+      atualizado_em: nowIso,
+    },
+    ...existingFallback.filter((item) => item.endpoint !== subscription.endpoint),
+  ];
+  await writeFallbackSubscriptions(nextFallback);
+
+  try {
+    const supabase = createPushServiceClient(request);
+    const { data: previous } = await supabase
+      .from('push_subscriptions')
+      .select('usuario_id')
+      .eq('endpoint', subscription.endpoint)
+      .maybeSingle();
+
+    const { error } = await supabase.from('push_subscriptions').upsert(
+      {
+        endpoint: subscription.endpoint,
+        subscription,
+        usuario_id: userId ?? previous?.usuario_id ?? null,
+        atualizado_em: nowIso,
+      },
+      { onConflict: 'endpoint' },
+    );
+    if (error && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+      throw new Error(`Não foi possível salvar a inscrição: ${error.message}`);
+    }
+  } catch (caught) {
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+      throw caught;
+    }
+  }
+}
+
+export async function listPushSubscriptionRecords(
+  request?: Request,
+): Promise<StoredPushSubscriptionRow[]> {
+  const byEndpoint = new Map<string, StoredPushSubscriptionRow>();
+
+  const fallbackRows = await readFallbackSubscriptions();
+  for (const row of fallbackRows) {
+    if (isPushSubscription(row.subscription)) {
+      byEndpoint.set(row.endpoint, row);
+    }
+  }
+
+  try {
+    const supabase = createPushServiceClient(request);
+    const { data: rows, error } = await supabase
+      .from('push_subscriptions')
+      .select('endpoint, subscription');
+    if (error && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+      throw new Error(`Não foi possível carregar inscrições: ${error.message}`);
+    }
+    if (Array.isArray(rows)) {
+      for (const row of rows) {
+        if (isPushSubscription(row.subscription)) {
+          byEndpoint.set(row.endpoint, {
+            endpoint: row.endpoint,
+            subscription: row.subscription,
+          });
+        }
+      }
+    }
+  } catch (caught) {
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() && byEndpoint.size === 0) {
+      throw caught;
+    }
+  }
+
+  return Array.from(byEndpoint.values());
+}
+
+export async function removeStalePushSubscriptions(
+  endpoints: string[],
+  request?: Request,
+): Promise<string | undefined> {
+  const uniqueEndpoints = [...new Set(endpoints)];
+  if (!uniqueEndpoints.length) return undefined;
+
+  const existingFallback = await readFallbackSubscriptions();
+  const filteredFallback = existingFallback.filter(
+    (item) => !uniqueEndpoints.includes(item.endpoint),
+  );
+  await writeFallbackSubscriptions(filteredFallback);
+
+  try {
+    const supabase = createPushServiceClient(request);
+    const { error } = await supabase
+      .from('push_subscriptions')
+      .delete()
+      .in('endpoint', uniqueEndpoints);
+    if (error && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+      return 'Não foi possível remover todas as inscrições expiradas.';
+    }
+  } catch {
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+      return 'Não foi possível remover todas as inscrições expiradas.';
+    }
+  }
+  return undefined;
 }
 
 export function isAllowedPushEndpoint(value: string): boolean {

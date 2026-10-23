@@ -1,8 +1,15 @@
 import {
-  createPushServiceClient,
   isPushSubscription,
   resolveSubscriptionUserId,
+  savePushSubscriptionRecord,
 } from '@/lib/push-server';
+import { getPublicVapidKey } from '@/lib/vapid-config';
+
+export async function GET() {
+  return Response.json({
+    publicKey: getPublicVapidKey(),
+  });
+}
 
 export async function POST(request: Request) {
   const origin = request.headers.get('origin');
@@ -23,27 +30,14 @@ export async function POST(request: Request) {
   if (authError) return Response.json({ error: authError }, { status: 401 });
 
   try {
-    const supabase = createPushServiceClient();
-    const { data: previous, error: lookupError } = await supabase
-      .from('push_subscriptions')
-      .select('usuario_id')
-      .eq('endpoint', body.endpoint)
-      .maybeSingle();
-    if (lookupError) throw new Error(`Não foi possível consultar a inscrição existente: ${lookupError.message}`);
-
-    const { error } = await supabase.from('push_subscriptions').upsert(
-      {
-        endpoint: body.endpoint,
-        subscription: body,
-        usuario_id: userId ?? previous?.usuario_id ?? null,
-      },
-      { onConflict: 'endpoint' },
+    await savePushSubscriptionRecord(body, userId, request);
+    return Response.json(
+      { subscribed: true, publicKey: getPublicVapidKey() },
+      { status: 201 },
     );
-    if (error) throw new Error(`Não foi possível salvar a inscrição: ${error.message}`);
-
-    return Response.json({ subscribed: true }, { status: 201 });
   } catch (caught) {
-    const message = caught instanceof Error ? caught.message : 'Falha ao registrar inscrição push.';
+    const message =
+      caught instanceof Error ? caught.message : 'Falha ao registrar inscrição push.';
     return Response.json({ error: message }, { status: 500 });
   }
 }

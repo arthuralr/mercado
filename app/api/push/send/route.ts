@@ -1,7 +1,8 @@
-import webpush from 'web-push';
 import {
-  createPushServiceClient,
+  initializeWebPush,
   isPushSubscription,
+  listPushSubscriptionRecords,
+  removeStalePushSubscriptions,
   requirePushManager,
 } from '@/lib/push-server';
 
@@ -29,7 +30,12 @@ export async function POST(request: Request) {
   if (!body || typeof body !== 'object') {
     return Response.json({ error: 'Informe título, mensagem e link de destino.' }, { status: 400 });
   }
-  const input = body as { title?: unknown; message?: unknown; link?: unknown };
+  const input = body as {
+    title?: unknown;
+    message?: unknown;
+    link?: unknown;
+    icon?: unknown;
+  };
   if (
     typeof input.title !== 'string' ||
     !input.title.trim() ||
@@ -40,35 +46,42 @@ export async function POST(request: Request) {
     typeof input.link !== 'string' ||
     input.link.length > 500
   ) {
-    return Response.json({ error: 'Revise os campos: título (até 80), mensagem (até 240) e link.' }, { status: 400 });
-  }
-
-  const link = input.link.trim();
-  if (!link.startsWith('/') || link.startsWith('//') || link.includes('\\') || /[\u0000-\u001f]/.test(link)) {
-    return Response.json({ error: 'O link deve ser um caminho interno, como /panfleto-de-ofertas.' }, { status: 400 });
-  }
-  const destination = new URL(link, new URL(request.url).origin);
-  if (destination.origin !== new URL(request.url).origin) {
-    return Response.json({ error: 'O link de destino precisa pertencer a este site.' }, { status: 400 });
-  }
-
-  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
-  const vapidSubject = process.env.VAPID_SUBJECT;
-  if (!vapidPublicKey || !vapidPrivateKey || !vapidSubject) {
     return Response.json(
-      { error: 'Configure NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY e VAPID_SUBJECT no servidor.' },
-      { status: 503 },
+      { error: 'Revise os campos: título (até 80), mensagem (até 240) e link.' },
+      { status: 400 },
     );
   }
 
+  const link = input.link.trim();
+  if (
+    !link.startsWith('/') ||
+    link.startsWith('//') ||
+    link.includes('\\') ||
+    /[\u0000-\u001f]/.test(link)
+  ) {
+    return Response.json(
+      { error: 'O link deve ser um caminho interno, como /panfleto-de-ofertas.' },
+      { status: 400 },
+    );
+  }
+  const destination = new URL(link, new URL(request.url).origin);
+  if (destination.origin !== new URL(request.url).origin) {
+    return Response.json(
+      { error: 'O link de destino precisa pertencer a este site.' },
+      { status: 400 },
+    );
+  }
+
+  const iconUrl =
+    typeof input.icon === 'string' &&
+    input.icon.trim() &&
+    input.icon.trim().length <= 1024
+      ? input.icon.trim()
+      : '/icon.png';
+
   try {
-    webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
-    const supabase = createPushServiceClient();
-    const { data: rows, error: queryError } = await supabase
-      .from('push_subscriptions')
-      .select('endpoint, subscription');
-    if (queryError) throw new Error(`Não foi possível carregar inscrições: ${queryError.message}`);
+    const { webpush } = initializeWebPush();
+    const rows = await listPushSubscriptionRecords(request);
 
     const staleEndpoints: string[] = [];
     let sent = 0;
@@ -77,13 +90,17 @@ export async function POST(request: Request) {
       title: input.title.trim(),
       message: input.message.trim(),
       link: destination.pathname + destination.search + destination.hash,
+      icon: iconUrl,
     });
 
     for (let offset = 0; offset < rows.length; offset += batchSize) {
       const batch = rows.slice(offset, offset + batchSize);
       await Promise.all(
-        batch.map(async (row: { endpoint: string; subscription: unknown }) => {
-          if (!isPushSubscription(row.subscription) || row.subscription.endpoint !== row.endpoint) {
+        batch.map(async (row) => {
+          if (
+            !isPushSubscription(row.subscription) ||
+            row.subscription.endpoint !== row.endpoint
+          ) {
             staleEndpoints.push(row.endpoint);
             failed += 1;
             return;
@@ -96,7 +113,8 @@ export async function POST(request: Request) {
             sent += 1;
           } catch (caught) {
             failed += 1;
-            if (statusCodeOf(caught) === 404 || statusCodeOf(caught) === 410) {
+            const status = statusCodeOf(caught);
+            if (status === 401 || status === 403 || status === 404 || status === 410) {
               staleEndpoints.push(row.endpoint);
             }
           }
@@ -104,14 +122,7 @@ export async function POST(request: Request) {
       );
     }
 
-    let cleanupWarning: string | undefined;
-    if (staleEndpoints.length > 0) {
-      const { error: cleanupError } = await supabase
-        .from('push_subscriptions')
-        .delete()
-        .in('endpoint', [...new Set(staleEndpoints)]);
-      if (cleanupError) cleanupWarning = 'Não foi possível remover todas as inscrições expiradas.';
-    }
+    const cleanupWarning = await removeStalePushSubscriptions(staleEndpoints, request);
 
     return Response.json({
       total: rows.length,
@@ -120,7 +131,8 @@ export async function POST(request: Request) {
       ...(cleanupWarning ? { warning: cleanupWarning } : {}),
     });
   } catch (caught) {
-    const message = caught instanceof Error ? caught.message : 'Falha ao enviar notificações push.';
+    const message =
+      caught instanceof Error ? caught.message : 'Falha ao enviar notificações push.';
     return Response.json({ error: message }, { status: 500 });
   }
 }
