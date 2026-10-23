@@ -67,7 +67,11 @@ export const getCatalogProducts = cache(async (): Promise<CatalogProduct[]> => {
         flashOfferEndsAt: resolveOfferEndsAt(activeOffer.data_fim),
       };
     }
-    if (productOffers.length) {
+    const matchesExpiredFlashOffer = productOffers.some(
+      (offer) =>
+        Math.abs(Number(offer.preco_promocional) - product.price) < 0.005,
+    );
+    if (matchesExpiredFlashOffer) {
       return { ...product, price: Number(product.oldPrice ?? product.price), oldPrice: null };
     }
     return product;

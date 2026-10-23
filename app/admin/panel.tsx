@@ -25,8 +25,11 @@ import {
   Pencil,
   Plus,
   Search,
+  Sparkles,
+  Star,
   Store,
   Settings2,
+  Tag,
   Trash2,
   Upload,
   Users,
@@ -40,6 +43,7 @@ import {
   type AdminFlyer,
   type AdminOffer,
 } from '../admin-data-provider';
+import { revalidateCatalogAndFlyer } from '../actions/site-settings';
 import { currentStoreDate } from '@/lib/site-settings';
 import {
   getFlyerMimeType,
@@ -49,6 +53,7 @@ import {
 } from '@/lib/flyer-file';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import {
+  createAdminProduct,
   fetchActiveOffersCount,
   fetchAdminOffers,
   fetchAdminProducts,
@@ -56,6 +61,7 @@ import {
   deleteFlyer,
   fetchTodayOrderCount,
   fetchTodayMetrics,
+  FLYER_SECTION_OPTIONS,
   importProductPrices,
   persistFlyer,
   persistOffer,
@@ -223,6 +229,45 @@ export default function AdminDashboard({
   const [flyerValidUntil, setFlyerValidUntil] = useState('');
   const [flyerMessage, setFlyerMessage] = useState('');
   const [flyerPreview, setFlyerPreview] = useState('');
+  const [flyerProductMode, setFlyerProductMode] = useState<'existing' | 'new'>('existing');
+  const [flyerSelectedProductId, setFlyerSelectedProductId] = useState(
+    initialProducts[0]?.id ?? '',
+  );
+  const [flyerProductSection, setFlyerProductSection] = useState<string>('capa');
+  const [flyerProductFeatured, setFlyerProductFeatured] = useState(true);
+  const [flyerProductBadge, setFlyerProductBadge] = useState('Destaque da Semana');
+  const [flyerProductNormalPrice, setFlyerProductNormalPrice] = useState(
+    initialProducts[0]
+      ? String(initialProducts[0].oldPrice ?? initialProducts[0].price)
+      : '',
+  );
+  const [flyerProductOfferPrice, setFlyerProductOfferPrice] = useState(
+    initialProducts[0] && initialProducts[0].oldPrice !== null
+      ? String(initialProducts[0].price)
+      : '',
+  );
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductCategory, setNewProductCategory] = useState('Hortifrúti');
+  const [newProductUnit, setNewProductUnit] = useState('unidade');
+  const [newProductBrand, setNewProductBrand] = useState('');
+  const [newProductImage, setNewProductImage] = useState('');
+  const [newProductStock, setNewProductStock] = useState('');
+  const [flyerProductFilter, setFlyerProductFilter] = useState<string>('linked');
+  const [flyerProductSearch, setFlyerProductSearch] = useState('');
+  const [flyerProductStatus, setFlyerProductStatus] = useState('');
+  const [flyerProductError, setFlyerProductError] = useState('');
+  const [savingFlyerProduct, setSavingFlyerProduct] = useState(false);
+  const [flyerProductDrafts, setFlyerProductDrafts] = useState<
+    Record<
+      string,
+      {
+        flyerPage: string;
+        badge: string;
+        normalPrice: string;
+        offerPrice: string;
+      }
+    >
+  >({});
   const csvInput = useRef<HTMLInputElement>(null);
   const flyerInput = useRef<HTMLInputElement>(null);
 
@@ -286,7 +331,12 @@ export default function AdminDashboard({
             if (!active) return;
             const errors: string[] = [];
             if (productsResult.status === 'fulfilled') {
-              setProducts(productsResult.value);
+              const loadedProducts = productsResult.value;
+              setProducts(loadedProducts);
+              const firstProduct = loadedProducts[0];
+              if (firstProduct) {
+                setFlyerSelectedProductId((current) => current || firstProduct.id);
+              }
             } else {
               errors.push(
                 productsResult.reason instanceof Error
@@ -526,6 +576,8 @@ export default function AdminDashboard({
       setOffers(updatedOffers);
       setActiveOffersTotal(updatedActiveCount);
       setOfferForm(null);
+      window.dispatchEvent(new Event('catalog-products-changed'));
+      void revalidateCatalogAndFlyer().catch(() => undefined);
       router.refresh();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Não foi possível salvar a oferta.');
@@ -538,6 +590,8 @@ export default function AdminDashboard({
       const nextOffers = offers.filter((item) => item.id !== offer.id);
       setOffers(nextOffers);
       setActiveOffersTotal(nextOffers.filter(isOfferActive).length);
+      window.dispatchEvent(new Event('catalog-products-changed'));
+      void revalidateCatalogAndFlyer().catch(() => undefined);
       router.refresh();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Não foi possível remover a oferta.');
@@ -561,6 +615,8 @@ export default function AdminDashboard({
         return next;
       });
       setProducts(await fetchAdminProducts());
+      window.dispatchEvent(new Event('catalog-products-changed'));
+      void revalidateCatalogAndFlyer().catch(() => undefined);
       router.refresh();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Não foi possível salvar o produto.');
@@ -669,6 +725,8 @@ export default function AdminDashboard({
       setCsvMessage(
         `${updatedCount} produto(s) atualizado(s) com sucesso no catálogo.`,
       );
+      window.dispatchEvent(new Event('catalog-products-changed'));
+      void revalidateCatalogAndFlyer().catch(() => undefined);
       router.refresh();
     } catch (error) {
       setCsvError(
@@ -718,6 +776,7 @@ export default function AdminDashboard({
         updateFlyers(nextFlyers);
         selectFlyer(savedFlyer.id);
         window.dispatchEvent(new Event('flyers-changed'));
+        void revalidateCatalogAndFlyer().catch(() => undefined);
         setFlyerMessage('Encarte enviado e publicado no Supabase.');
         setFlyerFile(null);
         router.refresh();
@@ -746,8 +805,10 @@ export default function AdminDashboard({
       setFlyers(nextFlyers);
       updateFlyers(nextFlyers);
       window.dispatchEvent(new Event('flyers-changed'));
+      void revalidateCatalogAndFlyer().catch(() => undefined);
       if (flyer?.id === flyerToRemove.id) startNewFlyer();
       setFlyerMessage('Encarte excluído.');
+      router.refresh();
     } catch (error) {
       setFlyerMessage(
         error instanceof Error ? error.message : 'Não foi possível excluir o encarte.',
@@ -762,6 +823,281 @@ export default function AdminDashboard({
     setFlyerFile(null);
     setFlyerPreview(flyerToEdit.fileUrl ?? '');
     setFlyerMessage('');
+  }
+
+  function selectExistingProductForFlyer(productId: string) {
+    setFlyerSelectedProductId(productId);
+    const selected = products.find((item) => item.id === productId);
+    if (!selected) return;
+    setFlyerProductSection(selected.flyerPage ?? 'capa');
+    const hasBadge = Boolean(selected.badge?.trim());
+    setFlyerProductFeatured(hasBadge || !selected.flyerPage);
+    setFlyerProductBadge(selected.badge?.trim() || 'Destaque da Semana');
+    setFlyerProductNormalPrice(String(selected.oldPrice ?? selected.price));
+    setFlyerProductOfferPrice(
+      selected.oldPrice !== null ? String(selected.price) : '',
+    );
+  }
+
+  async function submitFlyerProductForm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (savingFlyerProduct) return;
+    setFlyerProductStatus('');
+    setFlyerProductError('');
+
+    const normalPrice = parseCsvPrice(flyerProductNormalPrice);
+    const hasOfferPrice = flyerProductOfferPrice.trim() !== '';
+    const offerPrice = hasOfferPrice ? parseCsvPrice(flyerProductOfferPrice) : null;
+    const sectionValue = flyerProductSection.trim() || null;
+    const badgeValue = flyerProductFeatured
+      ? flyerProductBadge.trim() || 'Destaque da Semana'
+      : null;
+
+    if (!sectionValue && !badgeValue && offerPrice === null) {
+      setFlyerProductError(
+        'Escolha uma seção do panfleto, marque o item como destaque ou informe um preço promocional.',
+      );
+      return;
+    }
+    if (!Number.isFinite(normalPrice) || normalPrice <= 0) {
+      setFlyerProductError('Informe um preço normal válido maior que zero.');
+      return;
+    }
+    if (
+      offerPrice !== null &&
+      (!Number.isFinite(offerPrice) || offerPrice <= 0 || offerPrice >= normalPrice)
+    ) {
+      setFlyerProductError(
+        'O preço promocional no encarte deve ser maior que zero e menor que o preço normal.',
+      );
+      return;
+    }
+
+    setSavingFlyerProduct(true);
+    try {
+      if (flyerProductMode === 'new') {
+        const cleanName = newProductName.trim();
+        if (!cleanName) {
+          throw new Error('Informe o nome do novo produto para adicioná-lo ao panfleto.');
+        }
+        const parsedStock = parseCsvStock(newProductStock);
+        if (parsedStock !== null && Number.isNaN(parsedStock)) {
+          throw new Error('O estoque do novo produto deve ser um número inteiro válido.');
+        }
+        const created = await createAdminProduct({
+          name: cleanName,
+          category: newProductCategory.trim() || 'Hortifrúti',
+          unit: newProductUnit.trim() || 'unidade',
+          brand: newProductBrand.trim() || 'Seleção da Loja',
+          normalPrice,
+          offerPrice,
+          stock: parsedStock,
+          flyerPage: sectionValue ?? 'capa',
+          badge: badgeValue,
+          image: newProductImage.trim() || null,
+        });
+        const refreshed = await fetchAdminProducts();
+        setProducts(refreshed);
+        setFlyerSelectedProductId(created.id);
+        setFlyerProductMode('existing');
+        setNewProductName('');
+        setNewProductBrand('');
+        setNewProductImage('');
+        setNewProductStock('');
+        setFlyerProductStatus(
+          `Produto "${created.name}" cadastrado e adicionado ao panfleto de ofertas com sucesso!`,
+        );
+      } else {
+        if (!flyerSelectedProductId) {
+          throw new Error('Selecione um produto do catálogo.');
+        }
+        const updated = await persistProduct(flyerSelectedProductId, {
+          flyerPage: sectionValue,
+          badge: badgeValue,
+          normalPrice,
+          offerPrice,
+          active: true,
+        });
+        setProducts((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setFlyerProductDrafts((current) => {
+          const next = { ...current };
+          delete next[updated.id];
+          return next;
+        });
+        setFlyerProductStatus(
+          `Produto "${updated.name}" atualizado no panfleto de ofertas e refletido na loja!`,
+        );
+      }
+      window.dispatchEvent(new Event('catalog-products-changed'));
+      void revalidateCatalogAndFlyer().catch(() => undefined);
+      router.refresh();
+    } catch (error) {
+      setFlyerProductError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível salvar o produto no panfleto.',
+      );
+    } finally {
+      setSavingFlyerProduct(false);
+    }
+  }
+
+  function updateFlyerProductDraft(
+    product: CatalogProduct,
+    patch: Partial<{
+      flyerPage: string;
+      badge: string;
+      normalPrice: string;
+      offerPrice: string;
+    }>,
+  ) {
+    setFlyerProductDrafts((current) => {
+      const existing = current[product.id] ?? {
+        flyerPage: product.flyerPage ?? '',
+        badge: product.badge ?? '',
+        normalPrice: String(product.oldPrice ?? product.price),
+        offerPrice: product.oldPrice !== null ? String(product.price) : '',
+      };
+      return {
+        ...current,
+        [product.id]: {
+          ...existing,
+          ...patch,
+        },
+      };
+    });
+  }
+
+  async function saveFlyerProductRow(product: CatalogProduct) {
+    const draft = flyerProductDrafts[product.id];
+    const flyerPage = (draft ? draft.flyerPage : product.flyerPage ?? '').trim() || null;
+    const badge = (draft ? draft.badge : product.badge ?? '').trim() || null;
+    const normalPriceRaw = draft
+      ? draft.normalPrice
+      : String(product.oldPrice ?? product.price);
+    const offerPriceRaw = draft
+      ? draft.offerPrice
+      : product.oldPrice !== null
+        ? String(product.price)
+        : '';
+
+    const normalPrice = parseCsvPrice(normalPriceRaw);
+    const offerPrice = offerPriceRaw.trim() === '' ? null : parseCsvPrice(offerPriceRaw);
+
+    setFlyerProductStatus('');
+    setFlyerProductError('');
+
+    if (!Number.isFinite(normalPrice) || normalPrice <= 0) {
+      setFlyerProductError(`Informe um preço normal válido para "${product.name}".`);
+      return;
+    }
+    if (
+      offerPrice !== null &&
+      (!Number.isFinite(offerPrice) || offerPrice <= 0 || offerPrice >= normalPrice)
+    ) {
+      setFlyerProductError(
+        `O preço promocional de "${product.name}" deve ser menor que o preço normal.`,
+      );
+      return;
+    }
+
+    try {
+      const updated = await persistProduct(product.id, {
+        flyerPage,
+        badge,
+        normalPrice,
+        offerPrice,
+      });
+      setProducts((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setFlyerProductDrafts((current) => {
+        const next = { ...current };
+        delete next[product.id];
+        return next;
+      });
+      setFlyerProductStatus(
+        `Alterações de "${updated.name}" gravadas no panfleto com sucesso.`,
+      );
+      window.dispatchEvent(new Event('catalog-products-changed'));
+      void revalidateCatalogAndFlyer().catch(() => undefined);
+      router.refresh();
+    } catch (error) {
+      setFlyerProductError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível atualizar o produto no panfleto.',
+      );
+    }
+  }
+
+  async function toggleProductHighlightQuick(product: CatalogProduct) {
+    setFlyerProductStatus('');
+    setFlyerProductError('');
+    const isCurrentlyHighlighted = Boolean(product.badge?.trim());
+    const nextBadge = isCurrentlyHighlighted ? null : 'Destaque da Semana';
+    const nextFlyerPage =
+      !isCurrentlyHighlighted && !product.flyerPage ? 'capa' : product.flyerPage;
+    try {
+      const updated = await persistProduct(product.id, {
+        badge: nextBadge,
+        flyerPage: nextFlyerPage,
+      });
+      setProducts((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setFlyerProductDrafts((current) => {
+        const next = { ...current };
+        delete next[product.id];
+        return next;
+      });
+      setFlyerProductStatus(
+        nextBadge
+          ? `"${updated.name}" marcado como destaque no encarte!`
+          : `Destaque removido de "${updated.name}".`,
+      );
+      window.dispatchEvent(new Event('catalog-products-changed'));
+      void revalidateCatalogAndFlyer().catch(() => undefined);
+      router.refresh();
+    } catch (error) {
+      setFlyerProductError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível alterar o destaque do produto.',
+      );
+    }
+  }
+
+  async function removeProductFromFlyer(product: CatalogProduct) {
+    setFlyerProductStatus('');
+    setFlyerProductError('');
+    try {
+      const updated = await persistProduct(product.id, {
+        flyerPage: null,
+        badge: null,
+        offerPrice: null,
+      });
+      setProducts((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setFlyerProductDrafts((current) => {
+        const next = { ...current };
+        delete next[product.id];
+        return next;
+      });
+      setFlyerProductStatus(`"${updated.name}" foi removido do panfleto de ofertas.`);
+      window.dispatchEvent(new Event('catalog-products-changed'));
+      void revalidateCatalogAndFlyer().catch(() => undefined);
+      router.refresh();
+    } catch (error) {
+      setFlyerProductError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível remover o produto do panfleto.',
+      );
+    }
   }
 
   if (!authChecked) {
@@ -1072,6 +1408,560 @@ export default function AdminDashboard({
                 {flyerPreview && isPdfFlyer(flyerFile?.name ?? flyer?.fileName ?? '', flyerFile?.type ?? flyer?.fileType) ? <iframe src={flyerPreview} title="Prévia do PDF do encarte" className="h-[520px] w-full rounded-xl border border-slate-200" /> : flyerPreview && (flyerFile ? isSupportedFlyerFile(flyerFile) : Boolean(flyer?.fileType.startsWith('image/'))) ? <Image src={flyerPreview} alt="Prévia do encarte selecionado" width={800} height={1000} unoptimized className="max-h-[520px] w-full rounded-xl object-contain" /> : flyer ? <div className="rounded-xl bg-slate-50 p-5"><p className="mb-1 mt-0 font-bold">{flyer.title}</p><p className="mb-0 mt-0 text-sm text-slate-500">{flyer.fileName}</p><p className="mb-0 mt-2 flex items-center gap-2 text-xs text-slate-500"><CalendarDays size={14} /> Válido até {new Date(`${flyer.validUntil}T12:00:00`).toLocaleDateString('pt-BR')}</p></div> : <div className="grid min-h-64 place-items-center rounded-xl border border-dashed border-slate-200 text-center text-sm text-slate-400"><div><FileUp size={30} className="mx-auto mb-2" />Selecione uma arte para pré-visualizar</div></div>}
               </section>
               </div>
+
+              <section
+                aria-labelledby="flyer-products-management-title"
+                className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4">
+                  <div>
+                    <p className="mb-1 mt-0 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-700">
+                      <Sparkles size={14} />
+                      Vitrine e destaques do encarte
+                    </p>
+                    <h2
+                      id="flyer-products-management-title"
+                      className="m-0 text-lg font-black text-slate-900 sm:text-xl"
+                    >
+                      Produtos do Panfleto e Itens em Destaque
+                    </h2>
+                    <p className="mb-0 mt-1 text-sm text-slate-500">
+                      Adicione produtos às seções do panfleto ou selecione itens para destaque. As alterações são salvas no Supabase e exibidas imediatamente na página pública do encarte.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900">
+                      {
+                        products.filter(
+                          (item) =>
+                            Boolean(item.flyerPage?.trim()) ||
+                            Boolean(item.badge?.trim()) ||
+                            item.oldPrice !== null,
+                        ).length
+                      }{' '}
+                      no encarte
+                    </span>
+                    <span className="rounded-xl bg-orange-50 px-3 py-2 text-xs font-bold text-orange-800">
+                      {products.filter((item) => Boolean(item.badge?.trim())).length}{' '}
+                      em destaque
+                    </span>
+                    <Link
+                      href="/panfleto-de-ofertas"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-3.5 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-50"
+                    >
+                      <Eye size={14} />
+                      Ver encarte público
+                    </Link>
+                  </div>
+                </div>
+
+                <form
+                  onSubmit={(event) => void submitFlyerProductForm(event)}
+                  className="space-y-4 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 sm:p-5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="m-0 text-base font-black text-slate-900">
+                        Adicionar produto ao panfleto ou selecionar para destaque
+                      </h3>
+                      <p className="mb-0 mt-0.5 text-xs text-slate-600">
+                        Vincule um produto existente do catálogo ou cadastre um novo item diretamente no encarte.
+                      </p>
+                    </div>
+                    <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
+                      <button
+                        type="button"
+                        onClick={() => setFlyerProductMode('existing')}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                          flyerProductMode === 'existing'
+                            ? 'bg-emerald-800 text-white'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Selecionar do catálogo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFlyerProductMode('new');
+                          setFlyerProductSection('capa');
+                          setFlyerProductFeatured(true);
+                          setFlyerProductBadge('Destaque da Semana');
+                          setFlyerProductNormalPrice('');
+                          setFlyerProductOfferPrice('');
+                        }}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                          flyerProductMode === 'new'
+                            ? 'bg-emerald-800 text-white'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        + Novo produto no encarte
+                      </button>
+                    </div>
+                  </div>
+
+                  {flyerProductMode === 'existing' ? (
+                    <label className="block text-sm font-semibold text-slate-700">
+                      Produto do catálogo
+                      <select
+                        required
+                        value={flyerSelectedProductId}
+                        onChange={(event) =>
+                          selectExistingProductForFlyer(event.target.value)
+                        }
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                      >
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.name} ({product.category} ·{' '}
+                            {currency.format(product.oldPrice ?? product.price)})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <label className="block text-sm font-semibold text-slate-700 sm:col-span-2">
+                        Nome do produto
+                        <input
+                          required
+                          value={newProductName}
+                          onChange={(event) => setNewProductName(event.target.value)}
+                          placeholder="Ex.: Filé de Peito de Frango Resfriado 1kg"
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                        />
+                      </label>
+                      <label className="block text-sm font-semibold text-slate-700">
+                        Categoria
+                        <select
+                          value={newProductCategory}
+                          onChange={(event) =>
+                            setNewProductCategory(event.target.value)
+                          }
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                        >
+                          <option value="Hortifrúti">Hortifrúti</option>
+                          <option value="Açougue">Açougue</option>
+                          <option value="Padaria">Padaria</option>
+                          <option value="Bebidas">Bebidas</option>
+                          <option value="Mercearia">Mercearia</option>
+                          <option value="Limpeza">Limpeza</option>
+                          <option value="Laticínios">Laticínios</option>
+                        </select>
+                      </label>
+                      <label className="block text-sm font-semibold text-slate-700">
+                        Unidade
+                        <input
+                          value={newProductUnit}
+                          onChange={(event) => setNewProductUnit(event.target.value)}
+                          placeholder="Ex.: kg, bandeja 500g, un"
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                        />
+                      </label>
+                      <label className="block text-sm font-semibold text-slate-700">
+                        Marca
+                        <input
+                          value={newProductBrand}
+                          onChange={(event) => setNewProductBrand(event.target.value)}
+                          placeholder="Ex.: Seara, Seleção da Loja"
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                        />
+                      </label>
+                      <label className="block text-sm font-semibold text-slate-700">
+                        Estoque inicial (opcional)
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={newProductStock}
+                          onChange={(event) => setNewProductStock(event.target.value)}
+                          placeholder="Ex.: 50"
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                        />
+                      </label>
+                      <label className="block text-sm font-semibold text-slate-700 sm:col-span-2 lg:col-span-3">
+                        URL da imagem do produto (opcional)
+                        <input
+                          type="url"
+                          value={newProductImage}
+                          onChange={(event) => setNewProductImage(event.target.value)}
+                          placeholder="https://images.unsplash.com/..."
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <label className="block text-sm font-semibold text-slate-700">
+                      Seção no panfleto
+                      <select
+                        value={flyerProductSection}
+                        onChange={(event) =>
+                          setFlyerProductSection(event.target.value)
+                        }
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                      >
+                        {FLYER_SECTION_OPTIONS.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                        <option value="">Sem seção fixa (apenas lateral)</option>
+                      </select>
+                    </label>
+
+                    <label className="block text-sm font-semibold text-slate-700">
+                      Preço normal (R$)
+                      <input
+                        required
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={flyerProductNormalPrice}
+                        onChange={(event) =>
+                          setFlyerProductNormalPrice(event.target.value)
+                        }
+                        placeholder="Ex.: 24.90"
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                      />
+                    </label>
+
+                    <label className="block text-sm font-semibold text-slate-700">
+                      Preço promocional no encarte (opcional)
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={flyerProductOfferPrice}
+                        onChange={(event) =>
+                          setFlyerProductOfferPrice(event.target.value)
+                        }
+                        placeholder="Ex.: 18.90"
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700"
+                      />
+                    </label>
+
+                    <div className="space-y-1.5">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={flyerProductFeatured}
+                          onChange={(event) =>
+                            setFlyerProductFeatured(event.target.checked)
+                          }
+                          className="h-4 w-4 accent-emerald-700"
+                        />
+                        Destacar item (selo)
+                      </label>
+                      <input
+                        disabled={!flyerProductFeatured}
+                        value={flyerProductBadge}
+                        onChange={(event) =>
+                          setFlyerProductBadge(event.target.value)
+                        }
+                        placeholder="Ex.: Destaque da Semana"
+                        maxLength={60}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-emerald-700 disabled:bg-slate-100 disabled:text-slate-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+                      <span className="font-semibold">Selos rápidos:</span>
+                      {[
+                        'Destaque da Semana',
+                        'Oferta do Encarte',
+                        'Direto da Roça',
+                        'Corte Nobre',
+                        'Tamanho Família',
+                      ].map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => {
+                            setFlyerProductFeatured(true);
+                            setFlyerProductBadge(suggestion);
+                          }}
+                          className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={savingFlyerProduct}
+                      className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+                    >
+                      <Plus size={17} />
+                      {savingFlyerProduct
+                        ? 'Salvando no encarte...'
+                        : flyerProductMode === 'new'
+                          ? 'Cadastrar e adicionar ao panfleto'
+                          : 'Salvar produto no panfleto'}
+                    </button>
+                  </div>
+                </form>
+
+                {flyerProductError && (
+                  <p
+                    role="alert"
+                    className="m-0 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800"
+                  >
+                    {flyerProductError}
+                  </p>
+                )}
+                {flyerProductStatus && (
+                  <p
+                    role="status"
+                    className="m-0 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-900"
+                  >
+                    {flyerProductStatus}
+                  </p>
+                )}
+
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { id: 'linked', label: 'No panfleto / Em destaque' },
+                        { id: 'all', label: 'Todos do catálogo' },
+                        ...FLYER_SECTION_OPTIONS.map((opt) => ({
+                          id: opt.id,
+                          label: opt.label,
+                        })),
+                      ].map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setFlyerProductFilter(tab.id)}
+                          className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+                            flyerProductFilter === tab.id
+                              ? 'bg-emerald-800 text-white'
+                              : 'border border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-300 hover:text-emerald-800'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                    <label className="flex min-w-60 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 sm:max-w-xs">
+                      <Search size={16} className="text-slate-400" />
+                      <input
+                        value={flyerProductSearch}
+                        onChange={(event) =>
+                          setFlyerProductSearch(event.target.value)
+                        }
+                        placeholder="Filtrar produtos..."
+                        aria-label="Filtrar produtos do panfleto"
+                        className="w-full bg-transparent text-xs outline-none"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                    <table className="w-full min-w-[920px] border-collapse text-left">
+                      <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-4 py-3 font-bold">Produto</th>
+                          <th className="px-4 py-3 font-bold">Seção no Panfleto</th>
+                          <th className="px-4 py-3 font-bold">Selo de Destaque</th>
+                          <th className="px-4 py-3 font-bold">Preço Normal (R$)</th>
+                          <th className="px-4 py-3 font-bold">Preço Encarte (R$)</th>
+                          <th className="px-4 py-3 font-bold">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {products
+                          .filter((product) => {
+                            const matchesQuery =
+                              !flyerProductSearch.trim() ||
+                              `${product.id} ${product.name} ${product.brand} ${product.category} ${product.badge ?? ''}`
+                                .toLocaleLowerCase('pt-BR')
+                                .includes(
+                                  flyerProductSearch
+                                    .trim()
+                                    .toLocaleLowerCase('pt-BR'),
+                                );
+                            if (!matchesQuery) return false;
+                            if (flyerProductFilter === 'all') return true;
+                            if (flyerProductFilter === 'linked') {
+                              return (
+                                Boolean(product.flyerPage?.trim()) ||
+                                Boolean(product.badge?.trim()) ||
+                                product.oldPrice !== null
+                              );
+                            }
+                            return product.flyerPage === flyerProductFilter;
+                          })
+                          .map((product) => {
+                            const draft = flyerProductDrafts[product.id];
+                            const currentFlyerPage =
+                              draft?.flyerPage ?? product.flyerPage ?? '';
+                            const currentBadge =
+                              draft?.badge ?? product.badge ?? '';
+                            const currentNormalPrice =
+                              draft?.normalPrice ??
+                              String(product.oldPrice ?? product.price);
+                            const currentOfferPrice =
+                              draft?.offerPrice ??
+                              (product.oldPrice !== null
+                                ? String(product.price)
+                                : '');
+                            const isLinked =
+                              Boolean(product.flyerPage?.trim()) ||
+                              Boolean(product.badge?.trim()) ||
+                              product.oldPrice !== null;
+                            const isHighlighted = Boolean(product.badge?.trim());
+
+                            return (
+                              <tr key={product.id} className="align-middle">
+                                <td className="max-w-64 px-4 py-3">
+                                  <span className="block truncate text-sm font-bold text-slate-900">
+                                    {product.name}
+                                  </span>
+                                  <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                                    <span>{product.category}</span>
+                                    <span>·</span>
+                                    <code className="text-[11px] text-slate-400">
+                                      {product.id}
+                                    </code>
+                                    {isHighlighted && (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-800">
+                                        <Tag size={10} />
+                                        {product.badge}
+                                      </span>
+                                    )}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <select
+                                    aria-label={`Seção no panfleto de ${product.name}`}
+                                    value={currentFlyerPage}
+                                    onChange={(event) =>
+                                      updateFlyerProductDraft(product, {
+                                        flyerPage: event.target.value,
+                                      })
+                                    }
+                                    className="w-48 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800"
+                                  >
+                                    <option value="">Fora do panfleto</option>
+                                    {FLYER_SECTION_OPTIONS.map((opt) => (
+                                      <option key={opt.id} value={opt.id}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void toggleProductHighlightQuick(product)
+                                      }
+                                      title={
+                                        isHighlighted
+                                          ? 'Remover destaque rápido'
+                                          : 'Destacar rapidamente no encarte'
+                                      }
+                                      aria-label={
+                                        isHighlighted
+                                          ? `Remover destaque de ${product.name}`
+                                          : `Destacar ${product.name} no encarte`
+                                      }
+                                      className={`rounded-lg border p-1.5 transition ${
+                                        isHighlighted
+                                          ? 'border-orange-300 bg-orange-50 text-orange-600'
+                                          : 'border-slate-200 bg-white text-slate-400 hover:text-orange-500'
+                                      }`}
+                                    >
+                                      <Star
+                                        size={15}
+                                        fill={isHighlighted ? 'currentColor' : 'none'}
+                                      />
+                                    </button>
+                                    <input
+                                      aria-label={`Selo de destaque de ${product.name}`}
+                                      value={currentBadge}
+                                      onChange={(event) =>
+                                        updateFlyerProductDraft(product, {
+                                          badge: event.target.value,
+                                        })
+                                      }
+                                      placeholder="Sem selo"
+                                      maxLength={60}
+                                      className="w-36 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs"
+                                    />
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <input
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    aria-label={`Preço normal de ${product.name}`}
+                                    value={currentNormalPrice}
+                                    onChange={(event) =>
+                                      updateFlyerProductDraft(product, {
+                                        normalPrice: event.target.value,
+                                      })
+                                    }
+                                    className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-xs"
+                                  />
+                                </td>
+                                <td className="px-4 py-3">
+                                  <input
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    aria-label={`Preço promocional no encarte de ${product.name}`}
+                                    value={currentOfferPrice}
+                                    onChange={(event) =>
+                                      updateFlyerProductDraft(product, {
+                                        offerPrice: event.target.value,
+                                      })
+                                    }
+                                    placeholder="—"
+                                    className="w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-xs"
+                                  />
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void saveFlyerProductRow(product)
+                                      }
+                                      className="rounded-lg bg-emerald-800 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                                    >
+                                      Salvar
+                                    </button>
+                                    {isLinked && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          void removeProductFromFlyer(product)
+                                        }
+                                        aria-label={`Remover ${product.name} do encarte`}
+                                        className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-50"
+                                      >
+                                        Remover
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
             </div>
           )}
         </section>

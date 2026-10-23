@@ -3,11 +3,30 @@
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { CalendarDays, Plus, ShoppingBasket, X } from 'lucide-react';
-import { useAdminData } from '../admin-data-provider';
+import {
+  useAdminData,
+  useManagedProducts,
+  useSiteSettings,
+} from '../admin-data-provider';
 import { useShoppingCart } from '../cart-provider';
-import { useSiteSettings } from '../admin-data-provider';
+import { ProductCard } from '../shop-components';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import { isPdfFlyer } from '@/lib/flyer-file';
+
+export const FLYER_PUBLIC_SECTIONS = [
+  { id: 'capa', title: 'Destaques da semana', accent: 'bg-orange-500' },
+  { id: 'hortifruti', title: 'Feirinha fresquinha', accent: 'bg-emerald-700' },
+  { id: 'acougue-bebidas', title: 'Açougue e bebidas', accent: 'bg-rose-700' },
+  {
+    id: 'mercearia-limpeza',
+    title: 'Mercearia e casa',
+    accent: 'bg-amber-600',
+  },
+] as const;
+
+const sectionTitleById = new Map<string, string>(
+  FLYER_PUBLIC_SECTIONS.map((section) => [section.id, section.title]),
+);
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -37,7 +56,7 @@ export function FlyerValidity() {
     <>
       <CalendarDays size={17} />
       Válido até{' '}
-      {new Date(`${data.flyer.validUntil}T12:00:00`).toLocaleDateString(
+      {new Date(`${data.flyer.validUntil.slice(0, 10)}T12:00:00`).toLocaleDateString(
         'pt-BR',
       )}
     </>
@@ -45,6 +64,7 @@ export function FlyerValidity() {
 }
 
 export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
+  const managedProducts = useManagedProducts(products);
   const { data, selectFlyer } = useAdminData();
   const { addToCart } = useShoppingCart();
   const { settings } = useSiteSettings();
@@ -59,16 +79,23 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
     return () => window.clearInterval(interval);
   }, []);
 
-  const linkedProducts = products.filter(
-    (product) => {
-      if (product.active === false) return false;
-      const isFeatured = Boolean(product.badge?.trim());
-      const offerEndsAt = Date.parse(product.flashOfferEndsAt ?? '');
-      const hasActiveOffer =
-        Number.isFinite(offerEndsAt) && (now === 0 || offerEndsAt > now);
-      return isFeatured || hasActiveOffer;
-    },
-  );
+  const linkedProducts = managedProducts.filter((product) => {
+    if (product.active === false) return false;
+    const inFlyerSection = Boolean(product.flyerPage?.trim());
+    const isFeatured = Boolean(product.badge?.trim());
+    const hasFlyerDiscount =
+      product.oldPrice !== null && product.oldPrice > product.price;
+    const offerEndsAt = Date.parse(product.flashOfferEndsAt ?? '');
+    const hasActiveOffer =
+      Number.isFinite(offerEndsAt) && (now === 0 || offerEndsAt > now);
+    return inFlyerSection || isFeatured || hasFlyerDiscount || hasActiveOffer;
+  });
+
+  const activeSelectedProduct = selectedProduct
+    ? managedProducts.find((item) => item.id === selectedProduct.id) ??
+      selectedProduct
+    : null;
+
   const hasArtwork = Boolean(data.flyer?.fileUrl);
   if (!hasArtwork && !linkedProducts.length) return null;
 
@@ -76,7 +103,10 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
     <>
       <section aria-label="Encarte e produtos em destaque" className="mb-10">
         {data.flyers.length > 1 && (
-          <div className="mb-4 flex gap-2 overflow-x-auto pb-2" aria-label="Escolha um encarte">
+          <div
+            className="mb-4 flex gap-2 overflow-x-auto pb-2"
+            aria-label="Escolha um encarte"
+          >
             {data.flyers.map((flyer) => (
               <button
                 key={flyer.id}
@@ -94,7 +124,13 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
             ))}
           </div>
         )}
-        <div className={`grid items-start gap-5 ${hasArtwork ? 'lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.8fr)]' : ''}`}>
+        <div
+          className={`grid items-start gap-5 ${
+            hasArtwork
+              ? 'lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.8fr)]'
+              : ''
+          }`}
+        >
           {hasArtwork && data.flyer && (
             <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
               {isPdfFlyer(data.flyer.fileName, data.flyer.fileType) ? (
@@ -121,7 +157,10 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
             className="overflow-hidden rounded-2xl border border-slate-200 bg-white"
           >
             <div className="border-b border-slate-100 bg-slate-50 px-4 py-4">
-              <h2 id="flyer-products-title" className="m-0 text-base font-black text-slate-900">
+              <h2
+                id="flyer-products-title"
+                className="m-0 text-base font-black text-slate-900"
+              >
                 Ofertas do encarte
               </h2>
               <p className="mb-0 mt-1 text-xs text-slate-500">
@@ -130,51 +169,79 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
             </div>
             {linkedProducts.length ? (
               <ul className="m-0 max-h-[70vh] list-none divide-y divide-slate-100 overflow-y-auto p-0">
-                {linkedProducts.map((product) => (
-                  <li key={product.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedProduct(product)}
-                      className="flex w-full items-center gap-3 p-3 text-left transition hover:bg-emerald-50"
-                      aria-label={`Ver oferta de ${product.name}, ${currency.format(product.price)}`}
-                    >
-                      {product.image ? (
-                        <Image
-                          src={product.image}
-                          alt=""
-                          width={56}
-                          height={56}
-                          sizes="56px"
-                          className="h-14 w-14 shrink-0 rounded-xl object-cover"
-                        />
-                      ) : (
-                        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800">
-                          <ShoppingBasket size={22} />
+                {linkedProducts.map((product) => {
+                  const sectionName = product.flyerPage
+                    ? sectionTitleById.get(product.flyerPage)
+                    : undefined;
+                  return (
+                    <li key={product.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProduct(product)}
+                        className="flex w-full items-center gap-3 p-3 text-left transition hover:bg-emerald-50"
+                        aria-label={`Ver oferta de ${product.name}, ${currency.format(product.price)}`}
+                      >
+                        {product.image ? (
+                          <Image
+                            src={product.image}
+                            alt=""
+                            width={56}
+                            height={56}
+                            sizes="56px"
+                            className="h-14 w-14 shrink-0 rounded-xl object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800">
+                            <ShoppingBasket size={22} />
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1">
+                          {(Boolean(product.badge?.trim()) || sectionName) && (
+                            <span className="mb-1 flex flex-wrap items-center gap-1.5">
+                              {Boolean(product.badge?.trim()) && (
+                                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-800">
+                                  {product.badge}
+                                </span>
+                              )}
+                              {sectionName && (
+                                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                  {sectionName}
+                                </span>
+                              )}
+                            </span>
+                          )}
+                          <span className="block truncate text-sm font-bold text-slate-800">
+                            {product.name}
+                          </span>
+                          <span className="mt-1 flex items-baseline gap-2">
+                            {product.oldPrice !== null &&
+                              product.oldPrice > product.price && (
+                                <span className="text-[11px] text-slate-400 line-through">
+                                  {currency.format(product.oldPrice)}
+                                </span>
+                              )}
+                            <span className="text-xs font-black text-emerald-800">
+                              {currency.format(product.price)}
+                            </span>
+                          </span>
                         </span>
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-bold text-slate-800">
-                          {product.name}
-                        </span>
-                        <span className="mt-1 block text-xs font-black text-emerald-800">
-                          {currency.format(product.price)}
-                        </span>
-                      </span>
-                      <Plus size={18} className="shrink-0 text-emerald-800" />
-                    </button>
-                  </li>
-                ))}
+                        <Plus size={18} className="shrink-0 text-emerald-800" />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <p className="m-0 p-5 text-sm text-slate-500">
-                Nenhum produto em destaque ou com oferta ativa disponível no momento.
+                Nenhum produto em destaque ou com oferta ativa disponível no
+                momento.
               </p>
             )}
           </aside>
         </div>
       </section>
 
-      {selectedProduct && (
+      {activeSelectedProduct && (
         <div
           className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/55 p-4"
           role="presentation"
@@ -191,13 +258,16 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
             <div className="flex items-start justify-between gap-4 p-5">
               <div>
                 <p className="mb-1 mt-0 text-xs font-bold uppercase tracking-wide text-emerald-800">
-                  Oferta do encarte
+                  {activeSelectedProduct.badge || 'Oferta do encarte'}
                 </p>
-                <h2 id="flyer-product-dialog-title" className="m-0 text-xl font-black text-slate-900">
-                  {selectedProduct.name}
+                <h2
+                  id="flyer-product-dialog-title"
+                  className="m-0 text-xl font-black text-slate-900"
+                >
+                  {activeSelectedProduct.name}
                 </h2>
                 <p className="mb-0 mt-1 text-sm text-slate-500">
-                  {selectedProduct.unit} · {selectedProduct.brand}
+                  {activeSelectedProduct.unit} · {activeSelectedProduct.brand}
                 </p>
               </div>
               <button
@@ -209,11 +279,11 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
                 <X size={20} />
               </button>
             </div>
-            {selectedProduct.image && (
+            {activeSelectedProduct.image && (
               <div className="relative aspect-[4/3] bg-slate-50">
                 <Image
-                  src={selectedProduct.image}
-                  alt={selectedProduct.name}
+                  src={activeSelectedProduct.image}
+                  alt={activeSelectedProduct.name}
                   fill
                   sizes="(max-width: 640px) 100vw, 448px"
                   className="object-contain"
@@ -221,22 +291,22 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
               </div>
             )}
             <div className="space-y-4 p-5 pt-4">
-              {selectedProduct.oldPrice !== null && (
+              {activeSelectedProduct.oldPrice !== null && (
                 <p className="m-0 text-sm text-slate-500">
                   De{' '}
                   <span className="line-through">
-                    {currency.format(selectedProduct.oldPrice)}
+                    {currency.format(activeSelectedProduct.oldPrice)}
                   </span>
                 </p>
               )}
               <p className="m-0 text-3xl font-black text-emerald-800">
-                {currency.format(selectedProduct.price)}
+                {currency.format(activeSelectedProduct.price)}
               </p>
               {settings.commerceEnabled ? (
                 <button
                   type="button"
                   onClick={() => {
-                    addToCart(selectedProduct);
+                    addToCart(activeSelectedProduct);
                     setSelectedProduct(null);
                   }}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 py-3 font-bold text-white hover:bg-emerald-700"
@@ -246,11 +316,89 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
                 </button>
               ) : (
                 <p className="m-0 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-                  Compras online pausadas. Consulte a disponibilidade com a loja.
+                  Compras online pausadas. Consulte a disponibilidade com a
+                  loja.
                 </p>
               )}
             </div>
           </section>
+        </div>
+      )}
+    </>
+  );
+}
+
+export function FlyerCatalogSections({
+  products,
+}: {
+  products: CatalogProduct[];
+}) {
+  const managedProducts = useManagedProducts(products);
+  const sections = FLYER_PUBLIC_SECTIONS.map((section) => ({
+    ...section,
+    products: managedProducts.filter((product) => {
+      if (product.active === false) return false;
+      if (product.flyerPage === section.id) return true;
+      if (
+        section.id === 'capa' &&
+        !product.flyerPage &&
+        Boolean(product.badge?.trim())
+      ) {
+        return true;
+      }
+      return false;
+    }),
+  })).filter((section) => section.products.length > 0);
+
+  return (
+    <>
+      <div className="mb-8 flex gap-2 overflow-x-auto pb-2">
+        {sections.map((section) => (
+          <a
+            key={section.id}
+            href={`#${section.id}`}
+            className="shrink-0 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-800"
+          >
+            {section.title}
+          </a>
+        ))}
+      </div>
+
+      {sections.length ? (
+        <div className="space-y-12">
+          {sections.map((section) => (
+            <section
+              id={section.id}
+              key={section.id}
+              className="scroll-mt-36"
+              aria-labelledby={`${section.id}-title`}
+            >
+              <div className="mb-5 flex items-center gap-3">
+                <span className={`h-9 w-1.5 rounded-full ${section.accent}`} />
+                <div>
+                  <p className="mb-1 mt-0 text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Panfleto da semana
+                  </p>
+                  <h2
+                    id={`${section.id}-title`}
+                    className="m-0 text-2xl font-black text-slate-900"
+                  >
+                    {section.title}
+                  </h2>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4">
+                {section.products.map((product) => (
+                  <ProductCard key={product.id} product={product} />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-600">
+          O panfleto está sendo atualizado. Volte em breve para conferir as
+          ofertas.
         </div>
       )}
     </>

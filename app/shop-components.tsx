@@ -204,10 +204,19 @@ export function ProductCard({
         >
           <ProductImage product={product} className="absolute inset-0" />
         </Link>
-        {discount > 0 && (
-          <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-orange-500 px-2.5 py-1 text-xs font-black text-white shadow-sm">
-            -{discount}%
-          </span>
+        {(discount > 0 || Boolean(product.badge?.trim())) && (
+          <div className="pointer-events-none absolute left-2 top-2 flex max-w-[calc(100%-3.25rem)] flex-wrap gap-1.5">
+            {discount > 0 && (
+              <span className="rounded-full bg-orange-500 px-2.5 py-1 text-xs font-black text-white shadow-sm">
+                -{discount}%
+              </span>
+            )}
+            {Boolean(product.badge?.trim()) && (
+              <span className="truncate rounded-full bg-emerald-800/95 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">
+                {product.badge}
+              </span>
+            )}
+          </div>
         )}
         {onFavorite && (
           <button

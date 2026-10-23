@@ -2,11 +2,15 @@ import type { Metadata } from 'next';
 import { BadgePercent, Sparkles } from 'lucide-react';
 import {
   Breadcrumbs,
-  ProductCard,
   ShopHeader,
 } from '../shop-components';
 import { getCatalogProducts } from '@/lib/catalog';
-import { FlyerArtwork, FlyerTitle, FlyerValidity } from './flyer-meta';
+import {
+  FlyerArtwork,
+  FlyerCatalogSections,
+  FlyerTitle,
+  FlyerValidity,
+} from './flyer-meta';
 import FlashOffersSection from '../flash-offers-section';
 import { getLocalPageMetadata } from '@/lib/local-seo';
 
@@ -22,25 +26,8 @@ export async function generateMetadata(): Promise<Metadata> {
   });
 }
 
-const flyerSections = [
-  { id: 'capa', title: 'Destaques da semana', accent: 'bg-orange-500' },
-  { id: 'hortifruti', title: 'Feirinha fresquinha', accent: 'bg-emerald-700' },
-  { id: 'acougue-bebidas', title: 'Açougue e bebidas', accent: 'bg-rose-700' },
-  {
-    id: 'mercearia-limpeza',
-    title: 'Mercearia e casa',
-    accent: 'bg-amber-600',
-  },
-];
-
 export default async function FlyerPage() {
   const products = await getCatalogProducts();
-  const sections = flyerSections
-    .map((section) => ({
-      ...section,
-      products: products.filter((product) => product.flyerPage === section.id),
-    }))
-    .filter((section) => section.products.length > 0);
 
   return (
     <main className="min-h-screen bg-[#f7f8f4]">
@@ -76,54 +63,7 @@ export default async function FlyerPage() {
 
         <FlyerArtwork products={products} />
 
-        <div className="mb-8 flex gap-2 overflow-x-auto pb-2">
-          {sections.map((section) => (
-            <a
-              key={section.id}
-              href={`#${section.id}`}
-              className="shrink-0 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-800"
-            >
-              {section.title}
-            </a>
-          ))}
-        </div>
-
-        {sections.length ? (
-          <div className="space-y-12">
-            {sections.map((section) => (
-              <section
-                id={section.id}
-                key={section.id}
-                className="scroll-mt-36"
-                aria-labelledby={`${section.id}-title`}
-              >
-                <div className="mb-5 flex items-center gap-3">
-                  <span className={`h-9 w-1.5 rounded-full ${section.accent}`} />
-                  <div>
-                    <p className="mb-1 mt-0 text-xs font-bold uppercase tracking-wider text-slate-500">
-                      Panfleto da semana
-                    </p>
-                    <h2
-                      id={`${section.id}-title`}
-                      className="m-0 text-2xl font-black text-slate-900"
-                    >
-                      {section.title}
-                    </h2>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4">
-                  {section.products.map((product) => (
-                    <ProductCard key={product.id} product={product} />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-600">
-            O panfleto está sendo atualizado. Volte em breve para conferir as ofertas.
-          </div>
-        )}
+        <FlyerCatalogSections products={products} />
       </div>
     </main>
   );

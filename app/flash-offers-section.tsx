@@ -7,6 +7,7 @@ import { supabaseBrowser } from '@/lib/supabase-browser';
 import { currentStoreDate } from '@/lib/site-settings';
 import { isMissingRelationError } from '@/lib/supabase-errors';
 import { formatOfferCountdown, ProductCard } from './shop-components';
+import { useManagedProducts } from './admin-data-provider';
 
 interface FlashOfferRow {
   id?: string;
@@ -36,6 +37,7 @@ export default function FlashOffersSection({
   favorites?: string[];
   onFavorite?: (productId: string) => void;
 }) {
+  const managedProducts = useManagedProducts(products);
   const [now, setNow] = useState(0);
   const [offerRows, setOfferRows] = useState<FlashOfferRow[] | null>(null);
 
@@ -82,10 +84,10 @@ export default function FlashOffersSection({
   }, []);
 
   const enrichedProducts = useMemo(() => {
-    if (offerRows === null) return products;
+    if (offerRows === null) return managedProducts;
     const today = currentStoreDate();
 
-    return products.map((product) => {
+    return managedProducts.map((product) => {
       const productOffers = offerRows.filter(
         (offer) => String(offer.produto_id) === product.id,
       );
@@ -102,7 +104,11 @@ export default function FlashOffersSection({
           flashOfferEndsAt: resolveOfferEndsAt(activeOffer.data_fim),
         };
       }
-      if (productOffers.length) {
+      const matchesExpiredFlashOffer = productOffers.some(
+        (offer) =>
+          Math.abs(Number(offer.preco_promocional) - product.price) < 0.005,
+      );
+      if (matchesExpiredFlashOffer) {
         return {
           ...product,
           price: Number(product.oldPrice ?? product.price),
@@ -112,7 +118,7 @@ export default function FlashOffersSection({
       }
       return product;
     });
-  }, [offerRows, products]);
+  }, [managedProducts, offerRows]);
 
   const activeProducts = useMemo(
     () =>

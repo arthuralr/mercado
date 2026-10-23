@@ -18,6 +18,53 @@ export interface PriceImportRow {
   estoque: number | null;
 }
 
+export const FLYER_SECTION_OPTIONS = [
+  { id: 'capa', label: 'Destaques da semana (Capa)' },
+  { id: 'hortifruti', label: 'Feirinha fresquinha (Hortifrúti)' },
+  { id: 'acougue-bebidas', label: 'Açougue e bebidas' },
+  { id: 'mercearia-limpeza', label: 'Mercearia e casa' },
+] as const;
+
+export type FlyerSectionId = (typeof FLYER_SECTION_OPTIONS)[number]['id'];
+
+const VALID_FLYER_SECTION_IDS = new Set<string>(
+  FLYER_SECTION_OPTIONS.map((option) => option.id),
+);
+
+export function isValidFlyerSectionId(value: string): value is FlyerSectionId {
+  return VALID_FLYER_SECTION_IDS.has(value);
+}
+
+export interface ProductPatch {
+  active?: boolean;
+  stock?: number | null;
+  normalPrice?: number;
+  offerPrice?: number | null;
+  flyerPage?: string | null;
+  badge?: string | null;
+  name?: string;
+  category?: string;
+  unit?: string;
+  brand?: string;
+  image?: string | null;
+  description?: string | null;
+}
+
+export interface NewAdminProductInput {
+  id?: string;
+  name: string;
+  category: string;
+  unit?: string;
+  brand?: string;
+  normalPrice: number;
+  offerPrice?: number | null;
+  stock?: number | null;
+  flyerPage?: string | null;
+  badge?: string | null;
+  image?: string | null;
+  description?: string | null;
+}
+
 function throwIfError(error: { message: string } | null, action: string) {
   if (error) throw new Error(`${action}: ${error.message}`);
 }
@@ -86,23 +133,174 @@ export async function fetchActiveOffersCount(): Promise<number> {
 
 export async function persistProduct(
   id: string,
-  patch: { active?: boolean; stock?: number | null; normalPrice?: number },
+  patch: ProductPatch,
 ) {
-  const values: Record<string, string | number | boolean | null> = {};
-  if (patch.active !== undefined) values.ativo = patch.active;
-  if (Object.hasOwn(patch, 'stock')) values.estoque = patch.stock ?? null;
-  if (patch.normalPrice !== undefined) {
-    values.preco_normal = patch.normalPrice;
-    values.preco_oferta = null;
+  const cleanId = String(id ?? '').trim();
+  if (!cleanId) {
+    throw new Error('ID do produto inválido.');
   }
+
+  const values: Record<string, string | number | boolean | null> = {};
+  if (patch.active !== undefined) values.ativo = Boolean(patch.active);
+  if (Object.hasOwn(patch, 'stock')) {
+    if (patch.stock !== null && patch.stock !== undefined) {
+      const stockNum = Number(patch.stock);
+      if (!Number.isInteger(stockNum) || stockNum < 0) {
+        throw new Error('O estoque deve ser um número inteiro não negativo.');
+      }
+      values.estoque = stockNum;
+    } else {
+      values.estoque = null;
+    }
+  }
+  if (patch.normalPrice !== undefined) {
+    const normalPriceNum = Number(patch.normalPrice);
+    if (!Number.isFinite(normalPriceNum) || normalPriceNum < 0) {
+      throw new Error('Informe um preço normal válido.');
+    }
+    values.preco_normal = Number(normalPriceNum.toFixed(2));
+    if (!Object.hasOwn(patch, 'offerPrice')) {
+      values.preco_oferta = null;
+    }
+  }
+  if (Object.hasOwn(patch, 'offerPrice')) {
+    if (patch.offerPrice === null || patch.offerPrice === undefined) {
+      values.preco_oferta = null;
+    } else {
+      const offerPriceNum = Number(patch.offerPrice);
+      if (!Number.isFinite(offerPriceNum) || offerPriceNum <= 0) {
+        throw new Error('O preço promocional do encarte deve ser maior que zero.');
+      }
+      if (
+        patch.normalPrice !== undefined &&
+        offerPriceNum >= Number(patch.normalPrice)
+      ) {
+        throw new Error(
+          'O preço promocional do encarte deve ser menor que o preço normal.',
+        );
+      }
+      values.preco_oferta = Number(offerPriceNum.toFixed(2));
+    }
+  }
+  if (Object.hasOwn(patch, 'flyerPage')) {
+    const rawPage = patch.flyerPage?.trim() ?? '';
+    if (rawPage && !isValidFlyerSectionId(rawPage)) {
+      throw new Error('Seção do panfleto inválida.');
+    }
+    values.tabloide_pagina = rawPage || null;
+  }
+  if (Object.hasOwn(patch, 'badge')) {
+    const rawBadge = patch.badge?.trim() ?? '';
+    values.selo = rawBadge ? rawBadge.slice(0, 60) : null;
+  }
+  if (patch.name !== undefined) {
+    const cleanName = patch.name.trim();
+    if (!cleanName) throw new Error('Informe o nome do produto.');
+    values.nome = cleanName;
+  }
+  if (patch.category !== undefined) {
+    values.categoria = patch.category.trim() || 'Outros';
+  }
+  if (patch.unit !== undefined) {
+    values.unidade = patch.unit.trim() || 'unidade';
+  }
+  if (patch.brand !== undefined) {
+    values.marca = patch.brand.trim() || null;
+  }
+  if (Object.hasOwn(patch, 'image')) {
+    values.imagem_url = patch.image?.trim() || null;
+  }
+  if (Object.hasOwn(patch, 'description')) {
+    values.descricao = patch.description?.trim() || null;
+  }
+
   const { data, error } = await supabaseBrowser
     .from('produtos')
     .update(values)
-    .eq('id', id)
-    .select('id')
+    .eq('id', cleanId)
+    .select(
+      'id, nome, descricao, categoria, preco_normal, preco_oferta, imagem_url, unidade, marca, selo, tabloide_pagina, restricoes_json, estoque, ativo',
+    )
+    .returns<ProductRow[]>()
     .maybeSingle();
   throwIfError(error, 'Não foi possível salvar o produto');
   if (!data) throw new Error('Produto não encontrado ou não autorizado para alteração.');
+  return mapProductRows([data])[0];
+}
+
+export async function createAdminProduct(
+  input: NewAdminProductInput,
+): Promise<CatalogProduct> {
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error('Informe o nome do produto.');
+  }
+  const normalPrice = Number(input.normalPrice);
+  if (!Number.isFinite(normalPrice) || normalPrice <= 0) {
+    throw new Error('Informe um preço normal maior que zero.');
+  }
+  let offerPrice: number | null = null;
+  if (input.offerPrice !== null && input.offerPrice !== undefined) {
+    const parsedOffer = Number(input.offerPrice);
+    if (!Number.isFinite(parsedOffer) || parsedOffer <= 0) {
+      throw new Error('O preço promocional do encarte deve ser maior que zero.');
+    }
+    if (parsedOffer >= normalPrice) {
+      throw new Error('O preço promocional do encarte deve ser menor que o preço normal.');
+    }
+    offerPrice = Number(parsedOffer.toFixed(2));
+  }
+  const rawPage = input.flyerPage?.trim() ?? '';
+  if (rawPage && !isValidFlyerSectionId(rawPage)) {
+    throw new Error('Seção do panfleto inválida.');
+  }
+  const stock =
+    input.stock === null || input.stock === undefined
+      ? null
+      : Number(input.stock);
+  if (stock !== null && (!Number.isInteger(stock) || stock < 0)) {
+    throw new Error('O estoque deve ser um número inteiro não negativo.');
+  }
+
+  const slugBase = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32);
+  const customId = input.id?.trim();
+  const id = customId || `prod-${slugBase || 'item'}-${Date.now().toString(36)}`;
+
+  const values = {
+    id,
+    nome: name,
+    categoria: input.category.trim() || 'Mercearia',
+    unidade: input.unit?.trim() || 'unidade',
+    marca: input.brand?.trim() || null,
+    preco_normal: Number(normalPrice.toFixed(2)),
+    preco_oferta: offerPrice,
+    estoque: stock,
+    tabloide_pagina: rawPage || null,
+    selo: input.badge?.trim() ? input.badge.trim().slice(0, 60) : null,
+    imagem_url: input.image?.trim() || null,
+    descricao: input.description?.trim() || null,
+    ativo: true,
+  };
+
+  const { data, error } = await supabaseBrowser
+    .from('produtos')
+    .insert(values)
+    .select(
+      'id, nome, descricao, categoria, preco_normal, preco_oferta, imagem_url, unidade, marca, selo, tabloide_pagina, restricoes_json, estoque, ativo',
+    )
+    .returns<ProductRow[]>()
+    .single();
+  throwIfError(error, 'Não foi possível cadastrar o produto');
+  if (!data) {
+    throw new Error('O produto não pôde ser cadastrado.');
+  }
+  return mapProductRows([data])[0];
 }
 
 export async function persistOffer(offer: AdminOffer) {
@@ -132,13 +330,13 @@ export async function fetchFlyers(): Promise<AdminFlyer[]> {
   if (isMissingRelationError(error)) return [];
   throwIfError(error, 'Não foi possível carregar o encarte');
   return (data ?? []).map((row) => ({
-    id: row.id,
-    title: row.titulo,
-    validUntil: row.validade,
-    fileName: row.arquivo_nome,
-    fileType: getFlyerMimeType(row.arquivo_nome),
+    id: String(row.id),
+    title: String(row.titulo ?? ''),
+    validUntil: String(row.validade ?? '').slice(0, 10),
+    fileName: String(row.arquivo_nome ?? ''),
+    fileType: getFlyerMimeType(String(row.arquivo_nome ?? '')),
     fileSize: 0,
-    fileUrl: row.arquivo_url,
+    fileUrl: row.arquivo_url ? String(row.arquivo_url) : undefined,
   }));
 }
 
@@ -146,6 +344,12 @@ export async function persistFlyer(
   flyer: AdminFlyer,
   file?: File,
 ) {
+  const cleanTitle = flyer.title.trim();
+  const cleanValidUntil = flyer.validUntil.trim().slice(0, 10);
+  if (!cleanTitle || !/^\d{4}-\d{2}-\d{2}$/.test(cleanValidUntil)) {
+    throw new Error('Informe o título e uma data de validade válida para o encarte.');
+  }
+
   let fileUrl = flyer.fileUrl;
   if (file) {
     if (!isSupportedFlyerFile(file)) {
@@ -171,8 +375,8 @@ export async function persistFlyer(
   if (!fileUrl) throw new Error('Escolha um arquivo de encarte.');
 
   const values = {
-    titulo: flyer.title,
-    validade: flyer.validUntil,
+    titulo: cleanTitle,
+    validade: cleanValidUntil,
     arquivo_url: fileUrl,
     arquivo_nome: file?.name ?? flyer.fileName,
     atualizado_em: new Date().toISOString(),
@@ -195,7 +399,9 @@ export async function persistFlyer(
   }
   return {
     ...flyer,
-    id: result.data.id,
+    id: String(result.data.id),
+    title: values.titulo,
+    validUntil: values.validade,
     fileUrl,
     fileName: values.arquivo_nome,
     fileType: file
