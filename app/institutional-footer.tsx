@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Package,
   ShieldCheck,
+  Smartphone,
   Star,
 } from 'lucide-react';
 import BrandLogo from './brand-logo';
@@ -17,6 +18,8 @@ import { usePathname } from 'next/navigation';
 import { useSiteSettings } from './admin-data-provider';
 import { isSafeWebUrl } from '@/lib/site-settings';
 import { openQuickShoppingList } from './shopping-list-tool';
+import { OfficialSocialLinks } from './social-links';
+import { openPwaInstallPrompt } from './pwa-install-banner';
 
 export default function InstitutionalFooter() {
   const pathname = usePathname();
@@ -26,6 +29,11 @@ export default function InstitutionalFooter() {
   const cleanWhatsappDigits = settings.channels.whatsappNumber.replace(/\D/g, '');
   const whatsappDigits = cleanWhatsappDigits.length >= 10 ? cleanWhatsappDigits : '551140044040';
   const whatsapp = `https://wa.me/${whatsappDigits}`;
+  const footerSummary =
+    settings.institution.aboutText
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .find(Boolean) || settings.institution.aboutText;
 
   return (
     <footer className="border-t border-zinc-800 bg-zinc-950 text-zinc-100">
@@ -33,7 +41,7 @@ export default function InstitutionalFooter() {
         <div className="space-y-4">
           <BrandLogo inverted />
           <p className="m-0 max-w-xs text-sm leading-relaxed text-zinc-400">
-            {settings.institution.aboutText}
+            {footerSummary}
           </p>
           <div
             className="flex items-center gap-1 text-yellow-400"
@@ -245,40 +253,14 @@ export default function InstitutionalFooter() {
             </Link>
           </nav>
 
+          <div className="space-y-2.5 pt-2">
+            <p className="m-0 text-xs font-bold uppercase tracking-wider text-zinc-300">
+              Siga nas Redes Sociais
+            </p>
+            <OfficialSocialLinks variant="pills" />
+          </div>
+
           <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1 text-xs font-medium text-zinc-400">
-            {isSafeWebUrl(settings.institution.instagram) && (
-              <a
-                href={settings.institution.instagram}
-                target="_blank"
-                rel="noreferrer"
-                className="transition-colors hover:text-white"
-              >
-                Instagram
-              </a>
-            )}
-            {isSafeWebUrl(settings.institution.facebook) && (
-              <a
-                href={settings.institution.facebook}
-                target="_blank"
-                rel="noreferrer"
-                className="transition-colors hover:text-white"
-              >
-                Facebook
-              </a>
-            )}
-            {settings.institution.socialLinks
-              .filter((link) => isSafeWebUrl(link.url))
-              .map((link) => (
-                <a
-                  key={link.id}
-                  href={link.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="transition-colors hover:text-white"
-                >
-                  {link.name}
-                </a>
-              ))}
             {settings.channels.ifoodEnabled &&
               isSafeWebUrl(settings.channels.ifoodUrl) && (
                 <a
@@ -304,6 +286,14 @@ export default function InstitutionalFooter() {
 
           {settings.pwa.enabled && (
             <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                onClick={openPwaInstallPrompt}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-xs font-bold text-emerald-300 transition hover:bg-emerald-500/25 hover:text-white"
+              >
+                <Smartphone size={14} />
+                Instalar o App / Atalho no Telemóvel
+              </button>
               {settings.pwa.googlePlay.enabled &&
                 isSafeWebUrl(settings.pwa.googlePlay.url) && (
                   <a

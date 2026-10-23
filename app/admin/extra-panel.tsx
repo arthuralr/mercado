@@ -18,6 +18,9 @@ import { supabaseBrowser } from '@/lib/supabase-browser';
 import { useSiteSettings } from '../admin-data-provider';
 import { revalidateSiteSettings } from '../actions/site-settings';
 import {
+  DEFAULT_ABOUT_TEXT,
+  DEFAULT_ABOUT_TITLE,
+  DEFAULT_ABOUT_VALUES,
   defaultSiteSettings,
   isSafeWebUrl,
   SITE_SETTINGS_TABLE,
@@ -619,7 +622,7 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
           <Toggle label="Botão de WhatsApp" checked={draft.channels.whatsappEnabled} onChange={(whatsappEnabled) => patch('channels', { ...draft.channels, whatsappEnabled })} />
           <Toggle label="Botão do iFood" checked={draft.channels.ifoodEnabled} onChange={(ifoodEnabled) => patch('channels', { ...draft.channels, ifoodEnabled })} />
           <Toggle label="Pré-cadastro Cartão da Loja" checked={draft.features.cardApplicationsEnabled} onChange={(cardApplicationsEnabled) => patch('features', { ...draft.features, cardApplicationsEnabled })} />
-          <Toggle label="Clube SuperVerde" checked={draft.features.clubEnabled} onChange={(clubEnabled) => patch('features', { ...draft.features, clubEnabled })} />
+          <Toggle label={`Clube ${draft.institution.storeName.trim() || 'de Descontos'}`} checked={draft.features.clubEnabled} onChange={(clubEnabled) => patch('features', { ...draft.features, clubEnabled })} />
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <label className={labelClass}>WhatsApp com código do país<input value={draft.channels.whatsappNumber} onChange={(event) => patch('channels', { ...draft.channels, whatsappNumber: event.target.value })} className={inputClass} placeholder="5511999999999" /></label>
@@ -628,11 +631,125 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
         </div>
       </section>
 
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="m-0 text-lg font-black">Página &ldquo;Quem Somos&rdquo; (Editável)</h2>
+            <p className="mb-0 mt-1 text-xs text-slate-500">
+              Personalize o título, os parágrafos institucionais e os cartões de valores exibidos em <strong>/sobre</strong> e no resumo do rodapé.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              patch('institution', {
+                ...draft.institution,
+                aboutTitle: DEFAULT_ABOUT_TITLE,
+                aboutText: DEFAULT_ABOUT_TEXT,
+                aboutValues: DEFAULT_ABOUT_VALUES,
+              })
+            }
+            className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-50"
+          >
+            Restaurar texto padrão
+          </button>
+        </div>
+
+        <label className={labelClass}>
+          Título de destaque da página Quem Somos
+          <input
+            value={draft.institution.aboutTitle ?? DEFAULT_ABOUT_TITLE}
+            onChange={(event) =>
+              patch('institution', {
+                ...draft.institution,
+                aboutTitle: event.target.value,
+              })
+            }
+            className={inputClass}
+            maxLength={140}
+            placeholder={DEFAULT_ABOUT_TITLE}
+          />
+        </label>
+
+        <label className={labelClass}>
+          Texto institucional / Quem somos (separe parágrafos com quebra de linha)
+          <textarea
+            rows={7}
+            value={draft.institution.aboutText}
+            onChange={(event) =>
+              patch('institution', {
+                ...draft.institution,
+                aboutText: event.target.value,
+              })
+            }
+            className={inputClass}
+            maxLength={4000}
+          />
+        </label>
+
+        <div className="space-y-2">
+          <p className="m-0 text-xs font-black uppercase tracking-wider text-slate-500">
+            Pilares e Diferenciais (Cartões da página Quem Somos)
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {(draft.institution.aboutValues ?? DEFAULT_ABOUT_VALUES).map(
+              (pillar, idx) => (
+                <div
+                  key={idx}
+                  className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3"
+                >
+                  <label className={labelClass}>
+                    Título {idx + 1}
+                    <input
+                      value={pillar.title}
+                      onChange={(event) => {
+                        const current =
+                          draft.institution.aboutValues ?? DEFAULT_ABOUT_VALUES;
+                        const next = current.map((item, i) =>
+                          i === idx ? { ...item, title: event.target.value } : item,
+                        );
+                        patch('institution', {
+                          ...draft.institution,
+                          aboutValues: next,
+                        });
+                      }}
+                      className={inputClass}
+                      maxLength={50}
+                    />
+                  </label>
+                  <label className={labelClass}>
+                    Descrição {idx + 1}
+                    <textarea
+                      rows={2}
+                      value={pillar.description}
+                      onChange={(event) => {
+                        const current =
+                          draft.institution.aboutValues ?? DEFAULT_ABOUT_VALUES;
+                        const next = current.map((item, i) =>
+                          i === idx
+                            ? { ...item, description: event.target.value }
+                            : item,
+                        );
+                        patch('institution', {
+                          ...draft.institution,
+                          aboutValues: next,
+                        });
+                      }}
+                      className={inputClass}
+                      maxLength={220}
+                    />
+                  </label>
+                </div>
+              ),
+            )}
+          </div>
+        </div>
+      </section>
+
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="m-0 text-lg font-black">Configurações da Loja</h2>
+        <h2 className="m-0 text-lg font-black">Configurações da Loja e Redes Sociais</h2>
         <Toggle label="Exibir faixa de aviso no topo" checked={draft.topbar.enabled} onChange={(enabled) => patch('topbar', { ...draft.topbar, enabled })} />
         <label className={labelClass}>Texto do aviso<input value={draft.topbar.text} onChange={(event) => patch('topbar', { ...draft.topbar, text: event.target.value })} className={inputClass} /></label>
-        <label className={labelClass}>Texto institucional / Quem somos<textarea rows={4} value={draft.institution.aboutText} onChange={(event) => patch('institution', { ...draft.institution, aboutText: event.target.value })} className={inputClass} maxLength={2000} /></label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className={labelClass}>Endereço completo<input value={draft.institution.address} onChange={(event) => patch('institution', { ...draft.institution, address: event.target.value })} className={inputClass} /></label>
           <label className={labelClass}>Cidade (SEO local)<input value={draft.institution.city} onChange={(event) => patch('institution', { ...draft.institution, city: event.target.value })} className={inputClass} maxLength={100} placeholder="Ex.: Campinas" /></label>
@@ -640,8 +757,9 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
           <label className={labelClass}>Telefone de atendimento<input value={draft.institution.phone} onChange={(event) => patch('institution', { ...draft.institution, phone: event.target.value })} className={inputClass} /></label>
           <label className={labelClass}>E-mail<input type="email" value={draft.institution.email} onChange={(event) => patch('institution', { ...draft.institution, email: event.target.value })} className={inputClass} /></label>
           <label className={labelClass}>Horários de funcionamento<input value={draft.institution.hours} onChange={(event) => patch('institution', { ...draft.institution, hours: event.target.value })} className={inputClass} /></label>
-          <label className={labelClass}>Facebook<input type="url" value={draft.institution.facebook} onChange={(event) => patch('institution', { ...draft.institution, facebook: event.target.value })} className={inputClass} /></label>
-          <label className={labelClass}>Instagram<input type="url" value={draft.institution.instagram} onChange={(event) => patch('institution', { ...draft.institution, instagram: event.target.value })} className={inputClass} /></label>
+          <label className={labelClass}>Instagram Oficial (URL)<input type="url" value={draft.institution.instagram} onChange={(event) => patch('institution', { ...draft.institution, instagram: event.target.value })} className={inputClass} placeholder="https://www.instagram.com/..." /></label>
+          <label className={labelClass}>Facebook Oficial (URL)<input type="url" value={draft.institution.facebook} onChange={(event) => patch('institution', { ...draft.institution, facebook: event.target.value })} className={inputClass} placeholder="https://www.facebook.com/..." /></label>
+          <label className={`${labelClass} sm:col-span-2`}>TikTok Oficial (URL)<input type="url" value={draft.institution.tiktok ?? ''} onChange={(event) => patch('institution', { ...draft.institution, tiktok: event.target.value })} className={inputClass} placeholder="https://www.tiktok.com/@..." /></label>
         </div>
         <div className="space-y-3 border-t border-slate-100 pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -845,6 +963,8 @@ interface InboxEntry {
 }
 
 function SubmissionInbox() {
+  const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
   const [entries, setEntries] = useState<InboxEntry[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -864,7 +984,7 @@ function SubmissionInbox() {
       const rows: InboxEntry[] = [
         ...(cards.data ?? []).map((row) => ({ type: 'Cartão da Loja', id: row.id, createdAt: row.criado_em, fields: { Nome: row.nome, CPF: row.cpf, Telefone: row.telefone, 'E-mail': row.email, 'Data de nascimento': row.data_nascimento } })),
         ...(applications.data ?? []).map((row) => ({ type: 'Trabalhe Conosco', id: row.id, createdAt: row.criado_em, fields: { Nome: row.nome, Contato: row.contato, 'Cargo desejado': row.cargo_desejado, Currículo: row.curriculo_texto, 'Arquivo enviado': row.arquivo_path } })),
-        ...(club.data ?? []).map((row) => ({ type: 'Clube SuperVerde', id: row.id, createdAt: row.criado_em, fields: { Nome: row.nome, Telefone: row.telefone, 'E-mail': row.email } })),
+        ...(club.data ?? []).map((row) => ({ type: `Clube ${storeName} de Descontos`, id: row.id, createdAt: row.criado_em, fields: { Nome: row.nome, Telefone: row.telefone, 'E-mail': row.email } })),
       ];
       for (const row of rows) {
         const filePath = row.fields['Arquivo enviado'];

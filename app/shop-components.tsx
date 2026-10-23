@@ -24,6 +24,7 @@ import {
   openQuickShoppingList,
   useQuickShoppingListCount,
 } from './shopping-list-tool';
+import { OfficialSocialLinks } from './social-links';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import BrandLogo from './brand-logo';
 
@@ -119,6 +120,7 @@ export function ShopHeader() {
                 <span>WhatsApp</span>
               </a>
             )}
+            <OfficialSocialLinks variant="header" className="hidden xl:inline-flex" />
             {venda_online_ativa && (
               <Link href="/conta" aria-label="Minha conta" className="rounded-xl p-2 text-slate-600 hover:bg-emerald-50 hover:text-emerald-800">
                 <UserRound size={20} />

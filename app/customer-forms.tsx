@@ -108,8 +108,9 @@ export function ClubSignupForm() {
     setMessage('Cadastro recebido! Em breve você poderá receber novidades e ofertas do clube.');
   }
 
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
   if (!settings.features.clubEnabled) {
-    return <div className="rounded-2xl bg-amber-50 p-5 text-sm text-amber-900">Novos cadastros do Clube SuperVerde estão pausados no momento.</div>;
+    return <div className="rounded-2xl bg-amber-50 p-5 text-sm text-amber-900">Novos cadastros do Clube {storeName} estão pausados no momento.</div>;
   }
 
   return (

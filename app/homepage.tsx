@@ -15,6 +15,7 @@ import {
   ShoppingListCalloutBanner,
   useQuickShoppingListCount,
 } from './shopping-list-tool';
+import { OfficialSocialLinks } from './social-links';
 import { useManagedProducts } from './admin-data-provider';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import {
@@ -380,6 +381,7 @@ export default function HomePage({ products }: { products: Product[] }) {
               <span>WhatsApp</span>
             </a>
           )}
+          <OfficialSocialLinks variant="header" className="hidden xl:inline-flex" />
           {venda_online_ativa ? (
             <button
               type="button"

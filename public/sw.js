@@ -64,7 +64,7 @@ self.addEventListener('push', (event) => {
   const title =
     typeof payload.title === 'string' && payload.title.trim()
       ? payload.title.trim().slice(0, 80)
-      : 'VerdeVale';
+      : 'Ofertas do Supermercado';
   const body = typeof payload.message === 'string' ? payload.message.slice(0, 240) : '';
   const destination = typeof payload.link === 'string' ? payload.link : '/';
   let url = new URL('/', self.location.origin);

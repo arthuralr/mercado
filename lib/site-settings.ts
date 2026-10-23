@@ -50,8 +50,11 @@ export interface SiteSettings {
     hours: string;
     facebook: string;
     instagram: string;
+    tiktok: string;
     socialLinks: Array<{ id: string; name: string; url: string }>;
+    aboutTitle: string;
     aboutText: string;
+    aboutValues: Array<{ title: string; description: string }>;
     branches: Array<{
       id: string;
       name: string;
@@ -73,6 +76,33 @@ export interface SiteSettings {
     tertiaryImage: string;
   };
 }
+
+export const LEGACY_SHORT_ABOUT_TEXT =
+  'Uma experiência de mercado próxima, prática e feita para acompanhar a rotina de cada família. Reunimos produtos, ofertas e atendimento em um só lugar, com transparência e cuidado em cada etapa.';
+
+export const DEFAULT_ABOUT_TITLE =
+  'Frescor, cuidado e praticidade no dia a dia';
+
+export const DEFAULT_ABOUT_TEXT = [
+  LEGACY_SHORT_ABOUT_TEXT,
+  'Nosso compromisso é comunicar preços e condições de forma transparente, valorizar o atendimento próximo e tornar a compra mais simples — online ou na loja física.',
+  'A disponibilidade de produtos, preços, horários e formas de entrega pode variar por filial. Consulte as informações atualizadas e fale com a equipe antes de concluir uma compra.',
+].join('\n\n');
+
+export const DEFAULT_ABOUT_VALUES: Array<{ title: string; description: string }> = [
+  {
+    title: 'Cuidado',
+    description: 'Atenção à seleção e à informação de cada produto.',
+  },
+  {
+    title: 'Conveniência',
+    description: 'Ofertas, encarte e catálogo acessíveis pelo celular.',
+  },
+  {
+    title: 'Transparência',
+    description: 'Condições de compra e atendimento apresentados com clareza.',
+  },
+];
 
 export const defaultSiteSettings: SiteSettings = {
   brand: {
@@ -113,11 +143,13 @@ export const defaultSiteSettings: SiteSettings = {
     phone: '(11) 4004-4040',
     email: 'atendimento@verdevale.com.br',
     hours: 'Segunda a sábado, das 7h às 21h · Domingo, das 8h às 14h',
-    facebook: '',
-    instagram: '',
+    facebook: 'https://www.facebook.com',
+    instagram: 'https://www.instagram.com',
+    tiktok: 'https://www.tiktok.com',
     socialLinks: [],
-    aboutText:
-      'Uma experiência de mercado próxima, prática e feita para acompanhar a rotina de cada família. Reunimos produtos, ofertas e atendimento em um só lugar, com transparência e cuidado em cada etapa.',
+    aboutTitle: DEFAULT_ABOUT_TITLE,
+    aboutText: DEFAULT_ABOUT_TEXT,
+    aboutValues: DEFAULT_ABOUT_VALUES,
     branches: [
       {
         id: 'centro',
@@ -132,7 +164,7 @@ export const defaultSiteSettings: SiteSettings = {
   bioLinks: [
     { label: 'Ofertas relâmpago', url: '/catalogo?ofertas=1', enabled: true },
     { label: 'Panfleto de Ofertas', url: '/panfleto-de-ofertas', enabled: true },
-    { label: 'Clube SuperVerde', url: '/clube', enabled: true },
+    { label: 'Clube de Descontos', url: '/clube', enabled: true },
     { label: 'Trabalhe conosco', url: '/trabalhe-conosco', enabled: true },
     { label: 'WhatsApp', url: '', enabled: true },
   ],
@@ -336,6 +368,50 @@ export function mergeSiteSettings(
       ...defaultSiteSettings.institution,
       ...input.institution,
       storeName: resolvedStoreName,
+      aboutTitle:
+        typeof input.institution?.aboutTitle === 'string' &&
+        input.institution.aboutTitle.trim()
+          ? input.institution.aboutTitle.trim()
+          : DEFAULT_ABOUT_TITLE,
+      aboutText:
+        typeof input.institution?.aboutText === 'string' &&
+        input.institution.aboutText.trim() &&
+        input.institution.aboutText.trim() !== LEGACY_SHORT_ABOUT_TEXT
+          ? input.institution.aboutText
+          : DEFAULT_ABOUT_TEXT,
+      aboutValues:
+        Array.isArray(input.institution?.aboutValues) &&
+        input.institution.aboutValues.length > 0
+          ? input.institution.aboutValues.map((item, idx) => {
+              const fallback = DEFAULT_ABOUT_VALUES[idx] ?? DEFAULT_ABOUT_VALUES[0];
+              if (!item || typeof item !== 'object') return fallback;
+              return {
+                title:
+                  typeof item.title === 'string' && item.title.trim()
+                    ? item.title
+                    : fallback.title,
+                description:
+                  typeof item.description === 'string' && item.description.trim()
+                    ? item.description
+                    : fallback.description,
+              };
+            })
+          : DEFAULT_ABOUT_VALUES,
+      facebook:
+        typeof input.institution?.facebook === 'string' &&
+        input.institution.facebook.trim()
+          ? input.institution.facebook.trim()
+          : defaultSiteSettings.institution.facebook,
+      instagram:
+        typeof input.institution?.instagram === 'string' &&
+        input.institution.instagram.trim()
+          ? input.institution.instagram.trim()
+          : defaultSiteSettings.institution.instagram,
+      tiktok:
+        typeof input.institution?.tiktok === 'string' &&
+        input.institution.tiktok.trim()
+          ? input.institution.tiktok.trim()
+          : defaultSiteSettings.institution.tiktok,
       branches,
       socialLinks: Array.isArray(input.institution?.socialLinks)
         ? input.institution.socialLinks.filter(
@@ -349,11 +425,21 @@ export function mergeSiteSettings(
         : defaultSiteSettings.institution.socialLinks,
     },
     bioLinks: Array.isArray(input.bioLinks)
-      ? input.bioLinks.map((link) =>
-          link.url === '/tabloide' || link.label.toLocaleLowerCase('pt-BR').includes('tabloide')
-            ? { ...link, label: 'Panfleto de Ofertas', url: '/panfleto-de-ofertas' }
-            : link,
-        )
+      ? input.bioLinks.map((link) => {
+          if (
+            link.url === '/tabloide' ||
+            link.label.toLocaleLowerCase('pt-BR').includes('tabloide')
+          ) {
+            return { ...link, label: 'Panfleto de Ofertas', url: '/panfleto-de-ofertas' };
+          }
+          if (link.label.includes('SuperVerde')) {
+            return {
+              ...link,
+              label: link.label.replace(/SuperVerde/g, resolvedStoreName),
+            };
+          }
+          return link;
+        })
       : defaultSiteSettings.bioLinks,
     banners: {
       ...defaultSiteSettings.banners,
@@ -370,6 +456,40 @@ export function isSafeWebUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+export function resolveSocialUrl(
+  rawValue: string | undefined,
+  platform: 'instagram' | 'facebook' | 'tiktok',
+  socialLinks?: Array<{ id: string; name: string; url: string }>,
+): string {
+  const baseMap = {
+    instagram: 'https://www.instagram.com',
+    facebook: 'https://www.facebook.com',
+    tiktok: 'https://www.tiktok.com',
+  } as const;
+
+  let candidate = (rawValue ?? '').trim();
+  if (!candidate && Array.isArray(socialLinks)) {
+    const matched = socialLinks.find((item) =>
+      item.name.toLocaleLowerCase('pt-BR').includes(platform),
+    );
+    if (matched?.url) candidate = matched.url.trim();
+  }
+
+  if (!candidate) return baseMap[platform];
+  if (isSafeWebUrl(candidate)) return candidate;
+  if (candidate.startsWith('@')) {
+    const handle = candidate.slice(1).trim();
+    return platform === 'tiktok'
+      ? `${baseMap.tiktok}/@${handle}`
+      : `${baseMap[platform]}/${handle}`;
+  }
+  if (candidate.includes('.')) {
+    const withHttps = `https://${candidate.replace(/^\/+/, '')}`;
+    if (isSafeWebUrl(withHttps)) return withHttps;
+  }
+  return baseMap[platform];
 }
 
 export function isSafeSiteLink(value: string) {

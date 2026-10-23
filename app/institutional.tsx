@@ -2,23 +2,32 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { MapPin, Clock3, Phone, ArrowRight, Leaf } from 'lucide-react';
+import { MapPin, Clock3, Phone, ArrowRight, Leaf, Smartphone } from 'lucide-react';
 import { ShopHeader } from './shop-components';
 import { useSiteSettings } from './admin-data-provider';
-import { ClubSignupForm, JobApplicationForm } from './customer-forms';
-import { isSafeSiteLink, isSafeWebUrl } from '@/lib/site-settings';
+import { CardRequestForm, ClubSignupForm, JobApplicationForm } from './customer-forms';
+import {
+  DEFAULT_ABOUT_TEXT,
+  DEFAULT_ABOUT_TITLE,
+  DEFAULT_ABOUT_VALUES,
+  isSafeSiteLink,
+  isSafeWebUrl,
+} from '@/lib/site-settings';
+import { OfficialSocialLinks } from './social-links';
+import { openPwaInstallPrompt } from './pwa-install-banner';
 
 const pageClass = 'mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8';
 
 function PageFrame({ title, intro, children }: { title: string; intro: string; children: React.ReactNode }) {
   const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
   return (
     <main className="min-h-screen bg-[#f7f8f4]">
       <ShopHeader />
       <div className={pageClass}>
         <Link href="/" className="text-sm font-bold text-emerald-800 hover:underline">← Início</Link>
         <header className="my-6 rounded-3xl bg-emerald-900 p-7 text-white sm:p-10">
-          <p className="mb-2 text-xs font-black uppercase tracking-widest text-emerald-200">{settings.institution.storeName}</p>
+          <p className="mb-2 text-xs font-black uppercase tracking-widest text-emerald-200">{storeName}</p>
           <h1 className="m-0 text-3xl font-black sm:text-4xl">{title}</h1>
           <p className="mb-0 mt-3 max-w-3xl text-sm leading-6 text-emerald-100 sm:text-base">{intro}</p>
         </header>
@@ -30,16 +39,50 @@ function PageFrame({ title, intro, children }: { title: string; intro: string; c
 
 export function AboutPage() {
   const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
+  const aboutTitle = settings.institution.aboutTitle?.trim() || DEFAULT_ABOUT_TITLE;
+  const rawAboutText = settings.institution.aboutText?.trim() || DEFAULT_ABOUT_TEXT;
+  const paragraphs = rawAboutText
+    .split(/\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+  const aboutValues =
+    Array.isArray(settings.institution.aboutValues) &&
+    settings.institution.aboutValues.length > 0
+      ? settings.institution.aboutValues
+      : DEFAULT_ABOUT_VALUES;
+
   return (
-    <PageFrame title="Quem somos" intro={`Conheça a história, os valores e a proposta de ${settings.institution.storeName}.`}>
+    <PageFrame title="Quem somos" intro={`Conheça a história, os valores e a proposta de ${storeName}.`}>
       <section className="rounded-2xl border border-slate-200 bg-white p-6 leading-7 text-slate-700">
-        <div className="mb-4 flex items-center gap-3 text-emerald-800"><Leaf size={24} /><strong>Frescor, cuidado e praticidade no dia a dia</strong></div>
-        <p>{settings.institution.aboutText}</p>
-        <p>Nosso compromisso é comunicar preços e condições de forma transparente, valorizar o atendimento próximo e tornar a compra mais simples — online ou na loja física.</p>
-        <p className="mb-0">A disponibilidade de produtos, preços, horários e formas de entrega pode variar por filial. Consulte as informações atualizadas e fale com a equipe antes de concluir uma compra.</p>
+        <div className="mb-4 flex items-center gap-3 text-emerald-800">
+          <Leaf size={24} className="shrink-0" />
+          <strong>{aboutTitle}</strong>
+        </div>
+        <div className="space-y-4">
+          {paragraphs.map((paragraph, index) => (
+            <p key={index} className="m-0 leading-7 text-slate-700">
+              {paragraph}
+            </p>
+          ))}
+        </div>
       </section>
       <section className="grid gap-3 sm:grid-cols-3">
-        {[['Cuidado', 'Atenção à seleção e à informação de cada produto.'], ['Conveniência', 'Ofertas, encarte e catálogo acessíveis pelo celular.'], ['Transparência', 'Condições de compra e atendimento apresentados com clareza.']].map(([title, text]) => <article key={title} className="rounded-2xl bg-white p-5"><h2 className="m-0 text-lg font-black text-emerald-900">{title}</h2><p className="mb-0 mt-2 text-sm leading-6 text-slate-600">{text}</p></article>)}
+        {aboutValues.map((pillar, index) => (
+          <article key={`${pillar.title}-${index}`} className="rounded-2xl border border-slate-200/70 bg-white p-5">
+            <h2 className="m-0 text-lg font-black text-emerald-900">{pillar.title}</h2>
+            <p className="mb-0 mt-2 text-sm leading-6 text-slate-600">{pillar.description}</p>
+          </article>
+        ))}
+      </section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        <h2 className="m-0 text-lg font-black text-slate-900">
+          Acompanhe {storeName} nas redes sociais
+        </h2>
+        <p className="mb-4 mt-1 text-sm text-slate-600">
+          Siga nossos canais oficiais para conferir ofertas do dia, novidades e bastidores da loja.
+        </p>
+        <OfficialSocialLinks variant="pills" />
       </section>
     </PageFrame>
   );
@@ -76,15 +119,29 @@ export function StoresPage() {
 
 export function ClubPage() {
   const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
   return (
-    <PageFrame title="Clube SuperVerde de Descontos" intro="Receba novidades e ofertas selecionadas. Faça seu pré-cadastro para demonstrar interesse no clube.">
+    <PageFrame title={`Clube ${storeName} de Descontos`} intro={`Receba novidades e ofertas selecionadas de ${storeName}. Faça seu pré-cadastro para demonstrar interesse no clube.`}>
       <section className="rounded-2xl border border-emerald-100 bg-emerald-50 p-6 text-sm leading-6 text-emerald-950">
         <h2 className="m-0 text-xl font-black">Vantagens para acompanhar</h2>
-        <p className="mb-0 mt-2">Com o Clube SuperVerde, você pode receber comunicações sobre promoções, novidades e campanhas da loja. A participação e a disponibilidade das ofertas seguem as regras informadas pela equipe e podem variar por filial e período.</p>
+        <p className="mb-0 mt-2">Com o Clube {storeName}, você pode receber comunicações sobre promoções, novidades e campanhas da loja. A participação e a disponibilidade das ofertas seguem as regras informadas pela equipe e podem variar por filial e período.</p>
       </section>
       <ClubSignupForm />
       {isSafeWebUrl(settings.channels.offersGroupUrl) && <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="m-0 text-lg font-black">Receba ofertas no WhatsApp</h2><p className="mb-3 mt-2 text-sm text-slate-600">Entre no grupo oficial para acompanhar os avisos. A participação no grupo é opcional.</p><a href={settings.channels.offersGroupUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-bold text-white">Entrar no grupo de ofertas <ArrowRight size={16} /></a></section>}
       <p className="text-xs leading-5 text-slate-500">Ao enviar seus dados, você concorda com o uso para esta finalidade. Consulte a <Link href="/privacidade" className="font-bold text-emerald-800 underline">Política de Privacidade</Link>.</p>
+    </PageFrame>
+  );
+}
+
+export function CardPageView() {
+  const { settings } = useSiteSettings();
+  const storeName = settings.institution.storeName.trim() || 'Supermercado';
+  return (
+    <PageFrame
+      title={`Cartão ${storeName}`}
+      intro={`Preencha um pré-cadastro para que a equipe de ${storeName} possa entrar em contato. O envio não representa aprovação de crédito.`}
+    >
+      <CardRequestForm />
     </PageFrame>
   );
 }
@@ -145,11 +202,22 @@ export function BioPage() {
             return <a key={`${link.label}-${link.url}`} href={href} target={href.startsWith('http') ? '_blank' : undefined} rel={href.startsWith('http') ? 'noreferrer' : undefined} className="block rounded-2xl bg-emerald-800 px-5 py-4 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-700">{link.label}</a>;
           })}
           {settings.channels.ifoodEnabled && isSafeWebUrl(settings.channels.ifoodUrl) && <a href={settings.channels.ifoodUrl} target="_blank" rel="noreferrer" className="block rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-sm font-black text-orange-900">Peça pelo iFood</a>}
-          {isSafeWebUrl(settings.institution.instagram) && <a href={settings.institution.instagram} target="_blank" rel="noreferrer" className="block rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold text-slate-700">Instagram</a>}
-          {isSafeWebUrl(settings.institution.facebook) && <a href={settings.institution.facebook} target="_blank" rel="noreferrer" className="block rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold text-slate-700">Facebook</a>}
-          {settings.institution.socialLinks.filter((link) => isSafeWebUrl(link.url)).map((link) => (
-            <a key={link.id} href={link.url} target="_blank" rel="noreferrer" className="block rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold text-slate-700">{link.name}</a>
-          ))}
+          {settings.pwa.enabled && (
+            <button
+              type="button"
+              onClick={openPwaInstallPrompt}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-emerald-700 bg-emerald-50 px-5 py-3.5 text-sm font-black text-emerald-950 transition hover:bg-emerald-100"
+            >
+              <Smartphone size={18} className="text-emerald-800" />
+              <span>Instalar o App {storeName} no telemóvel</span>
+            </button>
+          )}
+          <div className="pt-2">
+            <p className="mb-2.5 text-xs font-black uppercase tracking-wider text-slate-500">
+              Redes Sociais Oficiais
+            </p>
+            <OfficialSocialLinks variant="bio" />
+          </div>
         </nav>
         <Link href="/" className="mt-6 inline-block text-xs font-bold text-emerald-800 hover:underline">Visitar a loja online</Link>
       </section>

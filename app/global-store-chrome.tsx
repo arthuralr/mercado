@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { ClipboardList, MessageCircle } from 'lucide-react';
 import { useSiteSettings } from './admin-data-provider';
 import PushPermissionBanner from './push-permission-banner';
+import PwaInstallBanner from './pwa-install-banner';
 import QuickShoppingListModal, {
   openQuickShoppingList,
   useQuickShoppingListCount,
@@ -72,6 +73,7 @@ export default function GlobalStoreChrome() {
       </div>
 
       <QuickShoppingListModal />
+      <PwaInstallBanner />
       <PushPermissionBanner />
     </>
   );
