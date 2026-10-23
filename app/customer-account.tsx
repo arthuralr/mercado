@@ -6,6 +6,7 @@ import { Clipboard, ClipboardList, ListPlus, LogIn, LogOut, MessageCircle, Plus,
 import type { CatalogProduct } from '@/lib/catalog-types';
 import { useShoppingCart } from './cart-provider';
 import { useSiteSettings } from './admin-data-provider';
+import { getStoreWhatsappUrl } from '@/lib/site-settings';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { openQuickShoppingList } from './shopping-list-tool';
 
@@ -347,7 +348,7 @@ export default function CustomerAccount({ products }: { products: CatalogProduct
 
         {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
         {message && <p role="status" className="break-words rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{message}</p>}
-        {settings.channels.whatsappEnabled && <a href={`https://wa.me/${settings.channels.whatsappNumber.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="block text-center text-sm font-bold text-emerald-800">Precisa de ajuda? Fale com a loja</a>}
+        {settings.channels.whatsappEnabled && <a href={getStoreWhatsappUrl(settings)} target="_blank" rel="noreferrer" className="block text-center text-sm font-bold text-emerald-800">Precisa de ajuda? Fale com a loja</a>}
       </div>
     </main>
   );

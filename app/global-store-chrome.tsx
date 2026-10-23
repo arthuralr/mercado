@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { ClipboardList, MessageCircle } from 'lucide-react';
 import { useSiteSettings } from './admin-data-provider';
+import { getStoreWhatsappUrl } from '@/lib/site-settings';
 import PushPermissionBanner from './push-permission-banner';
 import PwaInstallBanner from './pwa-install-banner';
 import QuickShoppingListModal, {
@@ -27,9 +28,10 @@ export default function GlobalStoreChrome() {
 
   if (pathname.startsWith('/admin')) return null;
 
-  const cleanWhatsappDigits = settings.channels.whatsappNumber.replace(/\D/g, '');
-  const whatsappDigits = cleanWhatsappDigits.length >= 10 ? cleanWhatsappDigits : '551140044040';
-  const whatsappUrl = `https://wa.me/${whatsappDigits}?text=${encodeURIComponent(`Olá! Gostaria de atendimento da loja ${storeName}.`)}`;
+  const whatsappUrl = getStoreWhatsappUrl(
+    settings,
+    `Olá! Gostaria de atendimento da loja ${storeName}.`,
+  );
 
   return (
     <>

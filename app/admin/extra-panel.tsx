@@ -428,14 +428,6 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
         branches: current.institution.branches.map((branch, branchIndex) =>
           branchIndex === index ? { ...branch, ...update } : branch,
         ),
-        ...(index === 0 && update.address !== undefined ? { address: update.address } : {}),
-        ...(index === 0 && update.city !== undefined ? { city: update.city } : {}),
-        ...(index === 0 && update.neighborhood !== undefined
-          ? { neighborhood: update.neighborhood }
-          : {}),
-        ...(index === 0 && update.phone !== undefined ? { phone: update.phone } : {}),
-        ...(index === 0 && update.email !== undefined ? { email: update.email } : {}),
-        ...(index === 0 && update.hours !== undefined ? { hours: update.hours } : {}),
       },
     }));
   }
@@ -444,20 +436,9 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
     const branches = draft.institution.branches.filter(
       (_, branchIndex) => branchIndex !== index,
     );
-    const primaryBranch = branches[0];
     patch('institution', {
       ...draft.institution,
       branches,
-      ...(index === 0 && primaryBranch
-        ? {
-            address: primaryBranch.address,
-            city: primaryBranch.city ?? '',
-            neighborhood: primaryBranch.neighborhood ?? '',
-            phone: primaryBranch.phone ?? '',
-            email: primaryBranch.email ?? '',
-            hours: primaryBranch.hours ?? '',
-          }
-        : {}),
     });
   }
 
@@ -747,35 +728,92 @@ function SiteSettingsForm({ initialSettings }: { initialSettings: SiteSettings }
       </section>
 
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="m-0 text-lg font-black">Configurações da Loja e Redes Sociais</h2>
+        <div>
+          <h2 className="m-0 text-lg font-black">Configurações da Loja (Matriz), WhatsApp e Redes Sociais</h2>
+          <p className="mb-0 mt-1 text-xs text-slate-500">
+            Os dados principais abaixo definem a <strong>Loja Matriz</strong> (sempre exibida no topo das unidades) e os canais oficiais de atendimento e redes sociais.
+          </p>
+        </div>
         <Toggle label="Exibir faixa de aviso no topo" checked={draft.topbar.enabled} onChange={(enabled) => patch('topbar', { ...draft.topbar, enabled })} />
         <label className={labelClass}>Texto do aviso<input value={draft.topbar.text} onChange={(event) => patch('topbar', { ...draft.topbar, text: event.target.value })} className={inputClass} /></label>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className={labelClass}>Endereço completo<input value={draft.institution.address} onChange={(event) => patch('institution', { ...draft.institution, address: event.target.value })} className={inputClass} /></label>
+          <label className={labelClass}>Endereço completo (Loja Matriz)<input value={draft.institution.address} onChange={(event) => patch('institution', { ...draft.institution, address: event.target.value })} className={inputClass} /></label>
           <label className={labelClass}>Cidade (SEO local)<input value={draft.institution.city} onChange={(event) => patch('institution', { ...draft.institution, city: event.target.value })} className={inputClass} maxLength={100} placeholder="Ex.: Campinas" /></label>
           <label className={labelClass}>Bairro (SEO local)<input value={draft.institution.neighborhood} onChange={(event) => patch('institution', { ...draft.institution, neighborhood: event.target.value })} className={inputClass} maxLength={100} placeholder="Ex.: Centro" /></label>
           <label className={labelClass}>Telefone de atendimento<input value={draft.institution.phone} onChange={(event) => patch('institution', { ...draft.institution, phone: event.target.value })} className={inputClass} /></label>
+          <label className={labelClass}>
+            WhatsApp de Atendimento (com DDD / código do país)
+            <input
+              value={draft.channels.whatsappNumber}
+              onChange={(event) =>
+                patch('channels', {
+                  ...draft.channels,
+                  whatsappNumber: event.target.value,
+                })
+              }
+              className={inputClass}
+              placeholder="Ex.: 5511999999999"
+            />
+            <span className="mt-1 block text-xs font-normal text-slate-500">
+              Centraliza todos os botões de suporte e atendimento via WhatsApp do site.
+            </span>
+          </label>
           <label className={labelClass}>E-mail<input type="email" value={draft.institution.email} onChange={(event) => patch('institution', { ...draft.institution, email: event.target.value })} className={inputClass} /></label>
-          <label className={labelClass}>Horários de funcionamento<input value={draft.institution.hours} onChange={(event) => patch('institution', { ...draft.institution, hours: event.target.value })} className={inputClass} /></label>
-          <label className={labelClass}>Instagram Oficial (URL)<input type="url" value={draft.institution.instagram} onChange={(event) => patch('institution', { ...draft.institution, instagram: event.target.value })} className={inputClass} placeholder="https://www.instagram.com/..." /></label>
-          <label className={labelClass}>Facebook Oficial (URL)<input type="url" value={draft.institution.facebook} onChange={(event) => patch('institution', { ...draft.institution, facebook: event.target.value })} className={inputClass} placeholder="https://www.facebook.com/..." /></label>
-          <label className={`${labelClass} sm:col-span-2`}>TikTok Oficial (URL)<input type="url" value={draft.institution.tiktok ?? ''} onChange={(event) => patch('institution', { ...draft.institution, tiktok: event.target.value })} className={inputClass} placeholder="https://www.tiktok.com/@..." /></label>
+          <label className={`${labelClass} sm:col-span-2`}>Horários de funcionamento (Loja Matriz)<input value={draft.institution.hours} onChange={(event) => patch('institution', { ...draft.institution, hours: event.target.value })} className={inputClass} /></label>
+          <label className={labelClass}>
+            Instagram Oficial (URL ou @usuario)
+            <input
+              type="text"
+              value={draft.institution.instagram}
+              onChange={(event) => patch('institution', { ...draft.institution, instagram: event.target.value })}
+              className={inputClass}
+              placeholder="Deixe em branco para ocultar o ícone"
+            />
+          </label>
+          <label className={labelClass}>
+            Facebook Oficial (URL ou página)
+            <input
+              type="text"
+              value={draft.institution.facebook}
+              onChange={(event) => patch('institution', { ...draft.institution, facebook: event.target.value })}
+              className={inputClass}
+              placeholder="Deixe em branco para ocultar o ícone"
+            />
+          </label>
+          <label className={`${labelClass} sm:col-span-2`}>
+            TikTok Oficial (URL ou @usuario)
+            <input
+              type="text"
+              value={draft.institution.tiktok ?? ''}
+              onChange={(event) => patch('institution', { ...draft.institution, tiktok: event.target.value })}
+              className={inputClass}
+              placeholder="Deixe em branco para ocultar o ícone"
+            />
+            <span className="mt-1 block text-xs font-normal text-slate-500">
+              Apenas as redes sociais preenchidas acima terão seus ícones exibidos no topo, rodapé e páginas do site.
+            </span>
+          </label>
         </div>
         <div className="space-y-3 border-t border-slate-100 pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="m-0 text-sm font-black">Lojas e filiais</h3>
+            <div>
+              <h3 className="m-0 text-sm font-black">Filiais adicionais</h3>
+              <p className="mb-0 mt-0.5 text-xs text-slate-500">
+                A Loja Matriz já é incluída automaticamente no topo da lista. Adicione abaixo outras unidades ou filiais da rede.
+              </p>
+            </div>
             <button type="button" onClick={() => patch('institution', { ...draft.institution, branches: [...draft.institution.branches, { id: crypto.randomUUID(), name: '', address: '', city: '', neighborhood: '', phone: '', email: '', hours: '' }] })} className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-800">Adicionar filial</button>
           </div>
           {draft.institution.branches.map((branch, index) => (
             <div key={branch.id} className="grid gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-3">
-              <label className={labelClass}>Nome da loja<input required maxLength={100} value={branch.name} onChange={(event) => updateBranch(index, { name: event.target.value })} className={inputClass} /></label>
+              <label className={labelClass}>Nome da filial<input required maxLength={100} value={branch.name} onChange={(event) => updateBranch(index, { name: event.target.value })} className={inputClass} /></label>
               <label className={labelClass}>Endereço completo<input required maxLength={300} value={branch.address} onChange={(event) => updateBranch(index, { address: event.target.value })} className={inputClass} /></label>
               <label className={labelClass}>Cidade<input value={branch.city ?? ''} onChange={(event) => updateBranch(index, { city: event.target.value })} className={inputClass} maxLength={100} /></label>
               <label className={labelClass}>Bairro<input value={branch.neighborhood ?? ''} onChange={(event) => updateBranch(index, { neighborhood: event.target.value })} className={inputClass} maxLength={100} /></label>
               <label className={labelClass}>Telefone da filial<input value={branch.phone ?? ''} onChange={(event) => updateBranch(index, { phone: event.target.value })} className={inputClass} /></label>
               <label className={labelClass}>E-mail da filial<input type="email" value={branch.email ?? ''} onChange={(event) => updateBranch(index, { email: event.target.value })} className={inputClass} /></label>
               <label className={labelClass}>Horários da filial<input value={branch.hours ?? ''} onChange={(event) => updateBranch(index, { hours: event.target.value })} className={inputClass} /></label>
-              <button type="button" disabled={draft.institution.branches.length === 1} onClick={() => removeBranch(index)} className="self-end rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-600 underline disabled:opacity-40">Remover filial</button>
+              <button type="button" onClick={() => removeBranch(index)} className="self-end rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-700 underline hover:text-rose-800">Remover filial</button>
             </div>
           ))}
         </div>

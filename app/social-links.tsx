@@ -1,7 +1,11 @@
 'use client';
 
 import { useSiteSettings } from './admin-data-provider';
-import { isSafeWebUrl, resolveSocialUrl } from '@/lib/site-settings';
+import {
+  isSafeWebUrl,
+  resolveSocialUrl,
+  type SiteSettings,
+} from '@/lib/site-settings';
 
 export function InstagramOfficialIcon({ size = 18 }: { size?: number }) {
   return (
@@ -77,6 +81,28 @@ export function TikTokOfficialIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+export function hasConfiguredSocialLinks(settings: SiteSettings): boolean {
+  const instagramUrl = resolveSocialUrl(
+    settings.institution.instagram,
+    'instagram',
+    settings.institution.socialLinks,
+  );
+  const facebookUrl = resolveSocialUrl(
+    settings.institution.facebook,
+    'facebook',
+    settings.institution.socialLinks,
+  );
+  const tiktokUrl = resolveSocialUrl(
+    settings.institution.tiktok,
+    'tiktok',
+    settings.institution.socialLinks,
+  );
+  const hasExtra = settings.institution.socialLinks.some((item) =>
+    isSafeWebUrl(item.url),
+  );
+  return Boolean(instagramUrl || facebookUrl || tiktokUrl || hasExtra);
+}
+
 export function OfficialSocialLinks({
   variant = 'pills',
   className = '',
@@ -113,83 +139,105 @@ export function OfficialSocialLinks({
     );
   });
 
+  if (
+    !instagramUrl &&
+    !facebookUrl &&
+    !tiktokUrl &&
+    extraLinks.length === 0
+  ) {
+    return null;
+  }
+
   if (variant === 'header') {
+    if (!instagramUrl && !facebookUrl && !tiktokUrl) return null;
     return (
       <div
         aria-label={`Redes sociais de ${storeName}`}
         className={`inline-flex items-center gap-1.5 ${className}`}
       >
-        <a
-          href={instagramUrl}
-          target="_blank"
-          rel="noreferrer"
-          title={`Instagram oficial de ${storeName}`}
-          aria-label={`Instagram oficial de ${storeName}`}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] text-white shadow-xs transition hover:scale-105 hover:brightness-110"
-        >
-          <InstagramOfficialIcon size={17} />
-        </a>
-        <a
-          href={facebookUrl}
-          target="_blank"
-          rel="noreferrer"
-          title={`Facebook oficial de ${storeName}`}
-          aria-label={`Facebook oficial de ${storeName}`}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#1877F2] text-white shadow-xs transition hover:scale-105 hover:brightness-110"
-        >
-          <FacebookOfficialIcon size={17} />
-        </a>
-        <a
-          href={tiktokUrl}
-          target="_blank"
-          rel="noreferrer"
-          title={`TikTok oficial de ${storeName}`}
-          aria-label={`TikTok oficial de ${storeName}`}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#25F4EE]/50 bg-zinc-950 text-white shadow-xs transition hover:scale-105 hover:border-[#FE2C55]"
-        >
-          <TikTokOfficialIcon size={16} />
-        </a>
+        {instagramUrl && (
+          <a
+            href={instagramUrl}
+            target="_blank"
+            rel="noreferrer"
+            title={`Instagram oficial de ${storeName}`}
+            aria-label={`Instagram oficial de ${storeName}`}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] text-white shadow-xs transition hover:scale-105 hover:brightness-110"
+          >
+            <InstagramOfficialIcon size={17} />
+          </a>
+        )}
+        {facebookUrl && (
+          <a
+            href={facebookUrl}
+            target="_blank"
+            rel="noreferrer"
+            title={`Facebook oficial de ${storeName}`}
+            aria-label={`Facebook oficial de ${storeName}`}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#1877F2] text-white shadow-xs transition hover:scale-105 hover:brightness-110"
+          >
+            <FacebookOfficialIcon size={17} />
+          </a>
+        )}
+        {tiktokUrl && (
+          <a
+            href={tiktokUrl}
+            target="_blank"
+            rel="noreferrer"
+            title={`TikTok oficial de ${storeName}`}
+            aria-label={`TikTok oficial de ${storeName}`}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#25F4EE]/50 bg-zinc-950 text-white shadow-xs transition hover:scale-105 hover:border-[#FE2C55]"
+          >
+            <TikTokOfficialIcon size={16} />
+          </a>
+        )}
       </div>
     );
   }
 
   if (variant === 'bio') {
     return (
-      <div className={`grid grid-cols-1 gap-2.5 sm:grid-cols-3 ${className}`}>
-        <a
-          href={instagramUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] px-4 py-3.5 text-sm font-black text-white shadow-md transition hover:-translate-y-0.5 hover:brightness-110"
-        >
-          <InstagramOfficialIcon size={19} />
-          <span>Instagram</span>
-        </a>
-        <a
-          href={facebookUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center justify-center gap-2 rounded-2xl bg-[#1877F2] px-4 py-3.5 text-sm font-black text-white shadow-md transition hover:-translate-y-0.5 hover:brightness-110"
-        >
-          <FacebookOfficialIcon size={19} />
-          <span>Facebook</span>
-        </a>
-        <a
-          href={tiktokUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center justify-center gap-2 rounded-2xl border border-[#25F4EE]/50 bg-zinc-950 px-4 py-3.5 text-sm font-black text-white shadow-md transition hover:-translate-y-0.5 hover:border-[#FE2C55]"
-        >
-          <TikTokOfficialIcon size={18} />
-          <span>TikTok</span>
-        </a>
+      <div className={`flex flex-wrap justify-center gap-2.5 ${className}`}>
+        {instagramUrl && (
+          <a
+            href={instagramUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex min-w-28 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] px-4 py-3.5 text-sm font-black text-white shadow-md transition hover:-translate-y-0.5 hover:brightness-110"
+          >
+            <InstagramOfficialIcon size={19} />
+            <span>Instagram</span>
+          </a>
+        )}
+        {facebookUrl && (
+          <a
+            href={facebookUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex min-w-28 flex-1 items-center justify-center gap-2 rounded-2xl bg-[#1877F2] px-4 py-3.5 text-sm font-black text-white shadow-md transition hover:-translate-y-0.5 hover:brightness-110"
+          >
+            <FacebookOfficialIcon size={19} />
+            <span>Facebook</span>
+          </a>
+        )}
+        {tiktokUrl && (
+          <a
+            href={tiktokUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex min-w-28 flex-1 items-center justify-center gap-2 rounded-2xl border border-[#25F4EE]/50 bg-zinc-950 px-4 py-3.5 text-sm font-black text-white shadow-md transition hover:-translate-y-0.5 hover:border-[#FE2C55]"
+          >
+            <TikTokOfficialIcon size={18} />
+            <span>TikTok</span>
+          </a>
+        )}
         {extraLinks.map((link) => (
           <a
             key={link.id}
             href={link.url}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 sm:col-span-3"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700"
           >
             {link.name}
           </a>
@@ -203,36 +251,42 @@ export function OfficialSocialLinks({
       aria-label={`Redes sociais oficiais de ${storeName}`}
       className={`flex flex-wrap items-center gap-2.5 ${className}`}
     >
-      <a
-        href={instagramUrl}
-        target="_blank"
-        rel="noreferrer"
-        aria-label={`Seguir ${storeName} no Instagram`}
-        className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] px-3.5 py-2 text-xs font-black text-white shadow-md transition hover:scale-105 hover:brightness-110"
-      >
-        <InstagramOfficialIcon size={16} />
-        <span>Instagram</span>
-      </a>
-      <a
-        href={facebookUrl}
-        target="_blank"
-        rel="noreferrer"
-        aria-label={`Seguir ${storeName} no Facebook`}
-        className="inline-flex items-center gap-2 rounded-xl bg-[#1877F2] px-3.5 py-2 text-xs font-black text-white shadow-md transition hover:scale-105 hover:brightness-110"
-      >
-        <FacebookOfficialIcon size={16} />
-        <span>Facebook</span>
-      </a>
-      <a
-        href={tiktokUrl}
-        target="_blank"
-        rel="noreferrer"
-        aria-label={`Seguir ${storeName} no TikTok`}
-        className="inline-flex items-center gap-2 rounded-xl border border-[#25F4EE]/60 bg-zinc-900 px-3.5 py-2 text-xs font-black text-white shadow-md transition hover:scale-105 hover:border-[#FE2C55]"
-      >
-        <TikTokOfficialIcon size={16} />
-        <span>TikTok</span>
-      </a>
+      {instagramUrl && (
+        <a
+          href={instagramUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Seguir ${storeName} no Instagram`}
+          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] px-3.5 py-2 text-xs font-black text-white shadow-md transition hover:scale-105 hover:brightness-110"
+        >
+          <InstagramOfficialIcon size={16} />
+          <span>Instagram</span>
+        </a>
+      )}
+      {facebookUrl && (
+        <a
+          href={facebookUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Seguir ${storeName} no Facebook`}
+          className="inline-flex items-center gap-2 rounded-xl bg-[#1877F2] px-3.5 py-2 text-xs font-black text-white shadow-md transition hover:scale-105 hover:brightness-110"
+        >
+          <FacebookOfficialIcon size={16} />
+          <span>Facebook</span>
+        </a>
+      )}
+      {tiktokUrl && (
+        <a
+          href={tiktokUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Seguir ${storeName} no TikTok`}
+          className="inline-flex items-center gap-2 rounded-xl border border-[#25F4EE]/60 bg-zinc-900 px-3.5 py-2 text-xs font-black text-white shadow-md transition hover:scale-105 hover:border-[#FE2C55]"
+        >
+          <TikTokOfficialIcon size={16} />
+          <span>TikTok</span>
+        </a>
+      )}
       {extraLinks.map((link) => (
         <a
           key={link.id}

@@ -227,9 +227,20 @@ export default function PwaInstallBanner() {
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-800 text-white shadow-md">
-                  <Smartphone size={24} />
-                </div>
+                {settings.brand.logoUrl ? (
+                  <Image
+                    src={settings.brand.logoUrl}
+                    alt={storeName}
+                    width={48}
+                    height={48}
+                    unoptimized
+                    className="h-12 w-12 shrink-0 rounded-2xl border border-slate-200 bg-white object-contain p-1.5 shadow-md"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-800 text-white shadow-md">
+                    <Smartphone size={24} />
+                  </div>
+                )}
                 <div>
                   <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700">
                     Versão Web App (PWA)

@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ChefHat, Check, Clock3, Plus, Store, Users } from 'lucide-react';
+import { ChefHat, Check, Clock3, Plus, Users } from 'lucide-react';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import { dailyRecipes, type Recipe } from '@/lib/recipes';
 import { useShoppingCart } from './cart-provider';
-import { useOnlineSales } from './admin-data-provider';
+import { useSiteSettings } from './admin-data-provider';
 
 function normalize(value: string) {
   return value
@@ -38,7 +38,7 @@ function RecipeCard({
   products: CatalogProduct[];
 }) {
   const { addToCart } = useShoppingCart();
-  const { venda_online_ativa } = useOnlineSales();
+  const { venda_online_ativa } = useSiteSettings();
   const [feedback, setFeedback] = useState('');
   const ingredientMatches = useMemo(
     () =>
@@ -130,7 +130,7 @@ function RecipeCard({
           ))}
         </ol>
 
-        {venda_online_ativa ? (
+        {venda_online_ativa && (
           <>
             <button
               type="button"
@@ -147,11 +147,6 @@ function RecipeCard({
               </p>
             )}
           </>
-        ) : (
-          <div className="mt-auto flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs font-bold text-slate-600">
-            <Store size={16} className="shrink-0 text-emerald-700" />
-            <span>Consulte na loja física · Catálogo de ofertas</span>
-          </div>
         )}
       </div>
     </article>
@@ -171,7 +166,10 @@ export default function RecipeSuggestions({
   products: CatalogProduct[];
   compact?: boolean;
 }) {
-  const { venda_online_ativa } = useOnlineSales();
+  const { settings, venda_online_ativa } = useSiteSettings();
+  const recipes = Array.isArray(settings.recipes) ? settings.recipes : dailyRecipes;
+
+  if (compact && recipes.length === 0) return null;
 
   return (
     <section
@@ -208,11 +206,17 @@ export default function RecipeSuggestions({
           </Link>
         </div>
       )}
-      <div className="grid items-stretch gap-5 lg:grid-cols-3">
-        {dailyRecipes.map((recipe) => (
-          <RecipeCard key={recipe.id} recipe={recipe} products={products} />
-        ))}
-      </div>
+      {recipes.length > 0 ? (
+        <div className="grid items-stretch gap-5 lg:grid-cols-3">
+          {recipes.map((recipe) => (
+            <RecipeCard key={recipe.id} recipe={recipe} products={products} />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+          Nenhuma receita cadastrada no momento.
+        </div>
+      )}
     </section>
   );
 }

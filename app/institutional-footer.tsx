@@ -16,9 +16,9 @@ import {
 import BrandLogo from './brand-logo';
 import { usePathname } from 'next/navigation';
 import { useSiteSettings } from './admin-data-provider';
-import { isSafeWebUrl } from '@/lib/site-settings';
+import { getStoreWhatsappUrl, isSafeWebUrl } from '@/lib/site-settings';
 import { openQuickShoppingList } from './shopping-list-tool';
-import { OfficialSocialLinks } from './social-links';
+import { OfficialSocialLinks, hasConfiguredSocialLinks } from './social-links';
 import { openPwaInstallPrompt } from './pwa-install-banner';
 
 export default function InstitutionalFooter() {
@@ -26,9 +26,7 @@ export default function InstitutionalFooter() {
   const { settings, venda_online_ativa } = useSiteSettings();
   if (pathname.startsWith('/admin')) return null;
 
-  const cleanWhatsappDigits = settings.channels.whatsappNumber.replace(/\D/g, '');
-  const whatsappDigits = cleanWhatsappDigits.length >= 10 ? cleanWhatsappDigits : '551140044040';
-  const whatsapp = `https://wa.me/${whatsappDigits}`;
+  const whatsapp = getStoreWhatsappUrl(settings);
   const footerSummary =
     settings.institution.aboutText
       .split(/\n+/)
@@ -253,12 +251,14 @@ export default function InstitutionalFooter() {
             </Link>
           </nav>
 
-          <div className="space-y-2.5 pt-2">
-            <p className="m-0 text-xs font-bold uppercase tracking-wider text-zinc-300">
-              Siga nas Redes Sociais
-            </p>
-            <OfficialSocialLinks variant="pills" />
-          </div>
+          {hasConfiguredSocialLinks(settings) && (
+            <div className="space-y-2.5 pt-2">
+              <p className="m-0 text-xs font-bold uppercase tracking-wider text-zinc-300">
+                Siga nas Redes Sociais
+              </p>
+              <OfficialSocialLinks variant="pills" />
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1 text-xs font-medium text-zinc-400">
             {settings.channels.ifoodEnabled &&

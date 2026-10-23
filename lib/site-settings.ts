@@ -1,4 +1,18 @@
+import { dailyRecipes, type Recipe } from '@/lib/recipes';
+
 export const SITE_SETTINGS_TABLE = 'configuracoes_site';
+
+export interface StoreUnit {
+  id: string;
+  name: string;
+  address: string;
+  city?: string;
+  neighborhood?: string;
+  phone: string;
+  email: string;
+  hours: string;
+  isHeadquarters?: boolean;
+}
 
 export interface HeroCampaignCopy {
   id: string;
@@ -75,6 +89,7 @@ export interface SiteSettings {
     secondaryImage: string;
     tertiaryImage: string;
   };
+  recipes: Recipe[];
 }
 
 export const LEGACY_SHORT_ABOUT_TEXT =
@@ -143,9 +158,9 @@ export const defaultSiteSettings: SiteSettings = {
     phone: '(11) 4004-4040',
     email: 'atendimento@verdevale.com.br',
     hours: 'Segunda a sábado, das 7h às 21h · Domingo, das 8h às 14h',
-    facebook: 'https://www.facebook.com',
-    instagram: 'https://www.instagram.com',
-    tiktok: 'https://www.tiktok.com',
+    facebook: '',
+    instagram: '',
+    tiktok: '',
     socialLinks: [],
     aboutTitle: DEFAULT_ABOUT_TITLE,
     aboutText: DEFAULT_ABOUT_TEXT,
@@ -206,6 +221,7 @@ export const defaultSiteSettings: SiteSettings = {
     secondaryImage: '',
     tertiaryImage: '',
   },
+  recipes: dailyRecipes,
 };
 
 export function resolveOnlineSalesEnabled(
@@ -397,21 +413,9 @@ export function mergeSiteSettings(
               };
             })
           : DEFAULT_ABOUT_VALUES,
-      facebook:
-        typeof input.institution?.facebook === 'string' &&
-        input.institution.facebook.trim()
-          ? input.institution.facebook.trim()
-          : defaultSiteSettings.institution.facebook,
-      instagram:
-        typeof input.institution?.instagram === 'string' &&
-        input.institution.instagram.trim()
-          ? input.institution.instagram.trim()
-          : defaultSiteSettings.institution.instagram,
-      tiktok:
-        typeof input.institution?.tiktok === 'string' &&
-        input.institution.tiktok.trim()
-          ? input.institution.tiktok.trim()
-          : defaultSiteSettings.institution.tiktok,
+      facebook: sanitizeSocialSetting(input.institution?.facebook),
+      instagram: sanitizeSocialSetting(input.institution?.instagram),
+      tiktok: sanitizeSocialSetting(input.institution?.tiktok),
       branches,
       socialLinks: Array.isArray(input.institution?.socialLinks)
         ? input.institution.socialLinks.filter(
@@ -446,7 +450,83 @@ export function mergeSiteSettings(
       ...input.banners,
       campaigns,
     },
+    recipes: Array.isArray(input.recipes)
+      ? input.recipes
+          .filter(
+            (item): item is Recipe =>
+              Boolean(item) &&
+              typeof item === 'object' &&
+              typeof item.id === 'string' &&
+              typeof item.name === 'string' &&
+              Boolean(item.name.trim()),
+          )
+          .map((item) => ({
+            id: item.id,
+            name: item.name.trim(),
+            description:
+              typeof item.description === 'string' ? item.description.trim() : '',
+            time: typeof item.time === 'string' && item.time.trim() ? item.time.trim() : '20 min',
+            servings:
+              typeof item.servings === 'number' && item.servings > 0
+                ? item.servings
+                : 4,
+            ingredients: Array.isArray(item.ingredients)
+              ? item.ingredients
+                  .filter(
+                    (ing) =>
+                      Boolean(ing) &&
+                      typeof ing === 'object' &&
+                      typeof ing.name === 'string' &&
+                      Boolean(ing.name.trim()),
+                  )
+                  .map((ing) => ({
+                    name: ing.name.trim(),
+                    quantity:
+                      typeof ing.quantity === 'number' && ing.quantity > 0
+                        ? ing.quantity
+                        : 1,
+                    unit:
+                      typeof ing.unit === 'string' && ing.unit.trim()
+                        ? ing.unit.trim()
+                        : 'unidade',
+                    searchTerms:
+                      Array.isArray(ing.searchTerms) && ing.searchTerms.length > 0
+                        ? ing.searchTerms.map((t) => String(t).trim()).filter(Boolean)
+                        : [ing.name.trim().toLocaleLowerCase('pt-BR')],
+                  }))
+              : [],
+            steps: Array.isArray(item.steps)
+              ? item.steps.map((s) => String(s).trim()).filter(Boolean)
+              : [],
+          }))
+      : defaultSiteSettings.recipes,
   };
+}
+
+function isBareSocialRoot(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    if (
+      (host === 'instagram.com' ||
+        host === 'facebook.com' ||
+        host === 'tiktok.com') &&
+      (parsed.pathname === '' || parsed.pathname === '/') &&
+      !parsed.search
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeSocialSetting(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed || isBareSocialRoot(trimmed)) return '';
+  return trimmed;
 }
 
 export function isSafeWebUrl(value: string) {
@@ -462,7 +542,7 @@ export function resolveSocialUrl(
   rawValue: string | undefined,
   platform: 'instagram' | 'facebook' | 'tiktok',
   socialLinks?: Array<{ id: string; name: string; url: string }>,
-): string {
+): string | null {
   const baseMap = {
     instagram: 'https://www.instagram.com',
     facebook: 'https://www.facebook.com',
@@ -477,19 +557,110 @@ export function resolveSocialUrl(
     if (matched?.url) candidate = matched.url.trim();
   }
 
-  if (!candidate) return baseMap[platform];
+  if (!candidate || isBareSocialRoot(candidate)) return null;
   if (isSafeWebUrl(candidate)) return candidate;
   if (candidate.startsWith('@')) {
     const handle = candidate.slice(1).trim();
+    if (!handle) return null;
     return platform === 'tiktok'
       ? `${baseMap.tiktok}/@${handle}`
       : `${baseMap[platform]}/${handle}`;
   }
   if (candidate.includes('.')) {
     const withHttps = `https://${candidate.replace(/^\/+/, '')}`;
-    if (isSafeWebUrl(withHttps)) return withHttps;
+    if (isSafeWebUrl(withHttps) && !isBareSocialRoot(withHttps)) {
+      return withHttps;
+    }
   }
-  return baseMap[platform];
+  return null;
+}
+
+export function getStoreWhatsappDigits(settings: SiteSettings): string {
+  const rawWhatsapp = (settings.channels?.whatsappNumber ?? '').replace(/\D/g, '');
+  const rawPhone = (settings.institution?.phone ?? '').replace(/\D/g, '');
+  const candidate = rawWhatsapp.length >= 10 ? rawWhatsapp : rawPhone.length >= 10 ? rawPhone : '551140044040';
+  if ((candidate.length === 10 || candidate.length === 11) && !candidate.startsWith('55')) {
+    return `55${candidate}`;
+  }
+  return candidate;
+}
+
+export function getStoreWhatsappUrl(
+  settings: SiteSettings,
+  customMessage?: string,
+): string {
+  const digits = getStoreWhatsappDigits(settings);
+  if (customMessage && customMessage.trim()) {
+    return `https://wa.me/${digits}?text=${encodeURIComponent(customMessage.trim())}`;
+  }
+  return `https://wa.me/${digits}`;
+}
+
+export function getStoreUnits(settings: SiteSettings): StoreUnit[] {
+  const storeName =
+    settings.institution.storeName.trim() ||
+    defaultSiteSettings.institution.storeName;
+  const matrizAddress =
+    settings.institution.address.trim() ||
+    settings.institution.branches[0]?.address?.trim() ||
+    defaultSiteSettings.institution.address;
+  const matrizName = storeName.toLocaleLowerCase('pt-BR').includes('matriz')
+    ? storeName
+    : `${storeName} (Matriz)`;
+
+  const headquarters: StoreUnit = {
+    id: 'matriz',
+    name: matrizName,
+    address: matrizAddress,
+    city: settings.institution.city?.trim() || '',
+    neighborhood: settings.institution.neighborhood?.trim() || '',
+    phone:
+      settings.institution.phone?.trim() ||
+      defaultSiteSettings.institution.phone,
+    email:
+      settings.institution.email?.trim() ||
+      defaultSiteSettings.institution.email,
+    hours:
+      settings.institution.hours?.trim() ||
+      defaultSiteSettings.institution.hours,
+    isHeadquarters: true,
+  };
+
+  const additionalBranches: StoreUnit[] = [];
+  const norm = (val: string) => val.trim().toLocaleLowerCase('pt-BR');
+
+  for (const branch of settings.institution.branches ?? []) {
+    const bName = (branch.name ?? '').trim();
+    const bAddress = (branch.address ?? '').trim();
+    if (!bName && !bAddress) continue;
+
+    // Skip if it is an exact duplicate of the headquarters or legacy untouched placeholder
+    const isLegacyPlaceholder =
+      (bName === 'VerdeVale Centro' || bName === storeName) &&
+      bAddress === matrizAddress;
+    const isExactDuplicate =
+      (norm(bName) === norm(storeName) || norm(bName) === norm(matrizName)) &&
+      norm(bAddress) === norm(matrizAddress);
+
+    if (isLegacyPlaceholder || isExactDuplicate) continue;
+
+    additionalBranches.push({
+      id: branch.id || `filial-${additionalBranches.length + 1}`,
+      name: bName || `Filial ${additionalBranches.length + 1}`,
+      address: bAddress || matrizAddress,
+      city: branch.city?.trim() || settings.institution.city?.trim() || '',
+      neighborhood:
+        branch.neighborhood?.trim() ||
+        settings.institution.neighborhood?.trim() ||
+        '',
+      phone: branch.phone?.trim() || headquarters.phone,
+      email: branch.email?.trim() || headquarters.email,
+      hours: branch.hours?.trim() || headquarters.hours,
+      isHeadquarters: false,
+    });
+  }
+
+  return [headquarters, ...additionalBranches];
 }
 
 export function isSafeSiteLink(value: string) {

@@ -131,7 +131,7 @@ export default function ProductDetail({
             )}
           </div>
 
-          {venda_online_ativa ? (
+          {venda_online_ativa && (
             <>
               <div className="mb-5 flex items-center gap-3">
                 <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-1.5">
@@ -170,26 +170,6 @@ export default function ProductDetail({
                 </strong>
               </p>
             </>
-          ) : (
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-800 shadow-2xs">
-                  <Store size={20} />
-                </span>
-                <div>
-                  <p className="m-0 font-bold">Consulte na loja física</p>
-                  <p className="mb-0 mt-0.5 text-xs text-emerald-800">
-                    Catálogo de ofertas · Confira os endereços e horários de atendimento.
-                  </p>
-                </div>
-              </div>
-              <Link
-                href="/lojas"
-                className="rounded-xl bg-emerald-800 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-emerald-700"
-              >
-                Ver unidades
-              </Link>
-            </div>
           )}
 
           <section className="mt-8 border-t border-slate-200 pt-6">

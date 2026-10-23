@@ -25,6 +25,7 @@ import {
   useQuickShoppingListCount,
 } from './shopping-list-tool';
 import { OfficialSocialLinks } from './social-links';
+import { getStoreWhatsappUrl } from '@/lib/site-settings';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import BrandLogo from './brand-logo';
 
@@ -38,24 +39,31 @@ export function formatOfferCountdown(
   now: number,
 ): {
   remainingSeconds: number;
+  days: number;
   hours: number;
   minutes: number;
   seconds: number;
   formatted: string;
+  ariaLabel: string;
 } | null {
   if (!endsAt || now <= 0) return null;
   const endMs = Date.parse(endsAt);
   if (Number.isNaN(endMs)) return null;
   const remainingSeconds = Math.max(0, Math.ceil((endMs - now) / 1000));
-  const hours = Math.floor(remainingSeconds / 3600);
+  const days = Math.floor(remainingSeconds / 86400);
+  const hours = Math.floor((remainingSeconds % 86400) / 3600);
   const minutes = Math.floor((remainingSeconds % 3600) / 60);
   const seconds = remainingSeconds % 60;
+  const formatted = `${days}d ${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m`;
+  const ariaLabel = `${days} ${days === 1 ? 'dia' : 'dias'}, ${hours} ${hours === 1 ? 'hora' : 'horas'} e ${minutes} ${minutes === 1 ? 'minuto' : 'minutos'}`;
   return {
     remainingSeconds,
+    days,
     hours,
     minutes,
     seconds,
-    formatted: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`,
+    formatted,
+    ariaLabel,
   };
 }
 
@@ -63,9 +71,7 @@ export function ShopHeader() {
   const { itemCount, total, openCart } = useShoppingCart();
   const { settings, venda_online_ativa } = useSiteSettings();
   const quickListCount = useQuickShoppingListCount();
-  const cleanWhatsappDigits = settings.channels.whatsappNumber.replace(/\D/g, '');
-  const whatsappDigits = cleanWhatsappDigits.length >= 10 ? cleanWhatsappDigits : '551140044040';
-  const whatsappUrl = `https://wa.me/${whatsappDigits}`;
+  const whatsappUrl = getStoreWhatsappUrl(settings);
 
   return (
     <header className={`sticky ${settings.topbar.enabled && settings.topbar.text ? 'top-8' : 'top-0'} z-40 border-b border-slate-200 bg-white shadow-sm`}>
@@ -126,7 +132,7 @@ export function ShopHeader() {
                 <UserRound size={20} />
               </Link>
             )}
-            {venda_online_ativa ? (
+            {venda_online_ativa && (
               <button
                 type="button"
                 onClick={openCart}
@@ -139,14 +145,6 @@ export function ShopHeader() {
                   {itemCount}
                 </span>
               </button>
-            ) : (
-              <Link
-                href="/lojas"
-                className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 sm:inline-flex"
-              >
-                <Store size={16} className="text-emerald-700" />
-                <span>Consulte na loja física</span>
-              </Link>
             )}
           </div>
         </div>
@@ -305,7 +303,7 @@ export function ProductCard({
             className="mb-3 flex items-center justify-between gap-2 rounded-xl bg-red-600 px-3 py-2 text-white shadow-sm"
             aria-label={
               countdown
-                ? `Oferta de ${product.name} termina em ${countdown.hours} horas, ${countdown.minutes} minutos e ${countdown.seconds} segundos`
+                ? `Oferta de ${product.name} termina em ${countdown.ariaLabel}`
                 : `Cronômetro da oferta de ${product.name}`
             }
             aria-live="off"
@@ -314,8 +312,8 @@ export function ProductCard({
               <Clock3 size={15} className="shrink-0 text-yellow-300" />
               <span>Termina em</span>
             </span>
-            <span className="rounded-lg bg-zinc-950/90 px-2.5 py-1 font-mono text-xs font-black tracking-widest text-white shadow-xs sm:text-sm">
-              {countdown ? countdown.formatted : '--:--:--'}
+            <span className="rounded-lg bg-zinc-950/90 px-2.5 py-1 font-mono text-xs font-black tracking-wide text-white shadow-xs sm:text-sm">
+              {countdown ? countdown.formatted : '--d --h --m'}
             </span>
           </div>
         )}
@@ -326,27 +324,23 @@ export function ProductCard({
             )}
             <p className="m-0 text-lg font-black text-emerald-800">{currency.format(product.price)}</p>
           </div>
-          {!venda_online_ativa ? (
-            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600">
-              <Store size={13} className="shrink-0 text-emerald-700" />
-              <span className="hidden sm:inline">Consulte na loja</span>
-              <span className="sm:hidden">Na loja</span>
-            </span>
-          ) : quantity ? (
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-1">
-              <button type="button" onClick={() => changeQuantity(product.id, -1)} aria-label={`Diminuir quantidade de ${product.name}`} className="rounded-lg p-1.5 hover:bg-white">
-                <Minus size={16} />
-              </button>
-              <span className="min-w-5 text-center text-sm font-bold">{quantity}</span>
-              <button type="button" onClick={() => changeQuantity(product.id, 1)} aria-label={`Aumentar quantidade de ${product.name}`} className="rounded-lg p-1.5 hover:bg-white">
+          {venda_online_ativa && (
+            quantity ? (
+              <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-1">
+                <button type="button" onClick={() => changeQuantity(product.id, -1)} aria-label={`Diminuir quantidade de ${product.name}`} className="rounded-lg p-1.5 hover:bg-white">
+                  <Minus size={16} />
+                </button>
+                <span className="min-w-5 text-center text-sm font-bold">{quantity}</span>
+                <button type="button" onClick={() => changeQuantity(product.id, 1)} aria-label={`Aumentar quantidade de ${product.name}`} className="rounded-lg p-1.5 hover:bg-white">
+                  <Plus size={16} />
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => addToCart(product)} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-800 px-3 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 sm:text-sm">
                 <Plus size={16} />
+                <span className="hidden sm:inline">Adicionar</span>
               </button>
-            </div>
-          ) : (
-            <button type="button" onClick={() => addToCart(product)} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-800 px-3 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 sm:text-sm">
-              <Plus size={16} />
-              <span className="hidden sm:inline">Adicionar</span>
-            </button>
+            )
           )}
         </div>
       </div>

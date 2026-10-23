@@ -11,6 +11,7 @@ import {
   BellRing,
   CalendarDays,
   Check,
+  ChefHat,
   ChevronRight,
   CircleDollarSign,
   Download,
@@ -71,8 +72,9 @@ import {
 } from '@/lib/admin-database';
 import AdminExtraPanel from './extra-panel';
 import PushNotificationPanel from './push-panel';
+import AdminRecipesPanel from './recipes-panel';
 
-type Section = 'overview' | 'offers' | 'products' | 'flyer' | 'settings' | 'submissions' | 'calendar' | 'push';
+type Section = 'overview' | 'offers' | 'products' | 'flyer' | 'recipes' | 'settings' | 'submissions' | 'calendar' | 'push';
 type OfferForm = Omit<AdminOffer, 'id'> & { id: string };
 
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -85,6 +87,7 @@ const sectionInfo: Record<Section, { label: string; icon: typeof LayoutDashboard
   offers: { label: 'Ofertas relâmpago', icon: BadgePercent },
   products: { label: 'Produtos e preços', icon: Package },
   flyer: { label: 'Panfleto de Ofertas', icon: FileSpreadsheet },
+  recipes: { label: 'Receitas do Dia', icon: ChefHat },
   settings: { label: 'Configurações da Loja', icon: Settings2 },
   submissions: { label: 'Cadastros recebidos', icon: Inbox },
   calendar: { label: 'Calendário sazonal', icon: CalendarDays },
@@ -1213,10 +1216,11 @@ export default function AdminDashboard({
                   <div><h2 className="m-0 text-lg font-black">Atalhos de gestão</h2><p className="mb-0 mt-1 text-sm text-slate-500">Acesse as tarefas mais comuns.</p></div>
                   <Activity className="text-emerald-700" />
                 </div>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <QuickAction icon={BadgePercent} label="Criar uma oferta" onClick={() => { beginOffer(); setSection('offers'); }} />
                   <QuickAction icon={Package} label="Editar produtos" onClick={() => setSection('products')} />
                   <QuickAction icon={FileUp} label="Atualizar encarte" onClick={() => setSection('flyer')} />
+                  <QuickAction icon={ChefHat} label="Receitas do Dia" onClick={() => setSection('recipes')} />
                 </div>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
@@ -1236,6 +1240,8 @@ export default function AdminDashboard({
           {(section === 'settings' || section === 'submissions' || section === 'calendar') && (
             <AdminExtraPanel section={section} />
           )}
+
+          {section === 'recipes' && <AdminRecipesPanel />}
 
           {section === 'offers' && (
             <div className="space-y-5">

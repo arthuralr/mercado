@@ -5,6 +5,7 @@ import { revalidatePath, updateTag } from 'next/cache';
 export async function revalidateSiteSettings() {
   updateTag('site-settings');
   revalidatePath('/', 'layout');
+  revalidatePath('/manifest.webmanifest');
 }
 
 export async function revalidateCatalogAndFlyer() {

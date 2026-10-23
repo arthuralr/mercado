@@ -31,8 +31,25 @@ export async function generateMetadata(): Promise<Metadata> {
       path: "/",
     }),
   ]);
+  const logoUrl = local.settings.brand.logoUrl?.trim();
   return {
     ...localMetadata,
+    manifest: "/manifest.webmanifest",
+    ...(logoUrl
+      ? {
+          icons: {
+            icon: [
+              { url: logoUrl, sizes: "192x192" },
+              { url: logoUrl, sizes: "512x512" },
+            ],
+            shortcut: [{ url: logoUrl }],
+            apple: [
+              { url: logoUrl, sizes: "180x180" },
+              { url: logoUrl, sizes: "192x192" },
+            ],
+          },
+        }
+      : {}),
     appleWebApp: {
       capable: true,
       statusBarStyle: "default",

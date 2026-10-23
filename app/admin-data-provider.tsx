@@ -308,7 +308,33 @@ export function AdminDataProvider({
     document.documentElement.style.setProperty('--brand-secondary', secondary);
     document.documentElement.style.colorScheme = 'light';
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', primary);
-  }, [settings.brand.primaryColor, settings.brand.secondaryColor]);
+
+    const logoUrl = settings.brand.logoUrl?.trim();
+    if (logoUrl) {
+      const iconSelectors = [
+        'link[rel="icon"]',
+        'link[rel="shortcut icon"]',
+        'link[rel="apple-touch-icon"]',
+      ];
+      for (const selector of iconSelectors) {
+        const existing = document.querySelectorAll<HTMLLinkElement>(selector);
+        if (existing.length > 0) {
+          existing.forEach((el) => {
+            el.href = logoUrl;
+          });
+        } else {
+          const link = document.createElement('link');
+          link.rel = selector.includes('apple') ? 'apple-touch-icon' : 'icon';
+          link.href = logoUrl;
+          document.head.appendChild(link);
+        }
+      }
+    }
+  }, [
+    settings.brand.primaryColor,
+    settings.brand.secondaryColor,
+    settings.brand.logoUrl,
+  ]);
 
   useEffect(() => {
     const storeName = settings.institution.storeName.trim();

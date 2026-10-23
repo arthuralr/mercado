@@ -16,6 +16,7 @@ import {
   useQuickShoppingListCount,
 } from './shopping-list-tool';
 import { OfficialSocialLinks } from './social-links';
+import { getStoreUnits, getStoreWhatsappUrl } from '@/lib/site-settings';
 import { useManagedProducts } from './admin-data-provider';
 import type { CatalogProduct } from '@/lib/catalog-types';
 import {
@@ -101,13 +102,11 @@ export default function HomePage({ products }: { products: Product[] }) {
   const quickListCount = useQuickShoppingListCount();
   const campaigns = settings.banners.campaigns;
   const campaignCount = Math.max(campaigns.length, 1);
-  const branches = settings.institution.branches;
+  const branches = useMemo(() => getStoreUnits(settings), [settings]);
   const activeBranchDetails =
     branches.find((branch) => branch.id === activeBranchId) ?? branches[0];
   const activeBranch = activeBranchDetails?.name ?? settings.institution.storeName;
-  const cleanWhatsappDigits = settings.channels.whatsappNumber.replace(/\D/g, '');
-  const whatsappDigits = cleanWhatsappDigits.length >= 10 ? cleanWhatsappDigits : '551140044040';
-  const whatsappUrl = `https://wa.me/${whatsappDigits}`;
+  const whatsappUrl = getStoreWhatsappUrl(settings);
 
   useEffect(() => {
     const update = () => setNow(Date.now());
@@ -234,12 +233,15 @@ export default function HomePage({ products }: { products: Product[] }) {
           <div className="relative hidden shrink-0 md:block">
             <button
               type="button"
-              onClick={() => setBranchMenuOpen((open) => !open)}
+              onClick={() => {
+                setSearchFocused(false);
+                setBranchMenuOpen((open) => !open);
+              }}
               className="flex items-center gap-2 rounded-xl px-3 py-2 text-left transition hover:bg-slate-50"
               aria-expanded={branchMenuOpen}
             >
               <MapPin size={19} className="text-emerald-700" />
-              <span className="max-w-36">
+              <span className="max-w-44">
                 <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                   {venda_online_ativa ? 'Você está comprando em' : 'Unidade selecionada'}
                 </span>
@@ -250,31 +252,43 @@ export default function HomePage({ products }: { products: Product[] }) {
               <ChevronDown size={16} className="text-slate-500" />
             </button>
             {branchMenuOpen && (
-              <div className="absolute left-0 top-full mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+              <div className="absolute left-0 top-[calc(100%+0.5rem)] z-[70] w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
                 <p className="px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Escolha uma filial
+                  Escolha uma unidade
                 </p>
                 {branches.map((branch) => (
-                    <button
-                      key={branch.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveBranchId(branch.id);
-                        setBranchMenuOpen(false);
-                      }}
-                      className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm hover:bg-emerald-50"
-                    >
-                      {branch.name}
-                      {activeBranch === branch.name && (
-                        <Check size={16} className="text-emerald-700" />
+                  <button
+                    key={branch.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveBranchId(branch.id);
+                      setBranchMenuOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-emerald-50"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5 font-semibold text-slate-800">
+                        <span className="truncate">{branch.name}</span>
+                        {branch.isHeadquarters && (
+                          <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-emerald-800">
+                            Matriz
+                          </span>
+                        )}
+                      </span>
+                      {branch.address && (
+                        <span className="block truncate text-xs text-slate-500">{branch.address}</span>
                       )}
-                    </button>
-                  ))}
+                    </span>
+                    {activeBranch === branch.name && (
+                      <Check size={16} className="shrink-0 text-emerald-700" />
+                    )}
+                  </button>
+                ))}
               </div>
             )}
           </div>
 
-          <div className="relative order-1 min-w-0 flex-1">
+          <div className="relative order-1 basis-full md:order-none md:basis-auto md:min-w-[220px] md:flex-1">
             <form
               className="flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 transition focus-within:border-emerald-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-emerald-700/10"
               onSubmit={(event) => {
@@ -288,7 +302,10 @@ export default function HomePage({ products }: { products: Product[] }) {
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                onFocus={() => setSearchFocused(true)}
+                onFocus={() => {
+                  setBranchMenuOpen(false);
+                  setSearchFocused(true);
+                }}
                 onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
                 placeholder="O que você procura hoje?"
                 aria-label="Buscar produtos"
@@ -309,7 +326,7 @@ export default function HomePage({ products }: { products: Product[] }) {
             {searchFocused && query.trim() && (
               <div
                 role="listbox"
-                className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[70] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
               >
                 {filteredSuggestions.length ? (
                   filteredSuggestions.map((product) => (
@@ -382,7 +399,7 @@ export default function HomePage({ products }: { products: Product[] }) {
             </a>
           )}
           <OfficialSocialLinks variant="header" className="hidden xl:inline-flex" />
-          {venda_online_ativa ? (
+          {venda_online_ativa && (
             <button
               type="button"
               onClick={openCart}
@@ -395,52 +412,54 @@ export default function HomePage({ products }: { products: Product[] }) {
                 {cartCount}
               </span>
             </button>
-          ) : (
-            <Link
-              href="/lojas"
-              className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 sm:inline-flex"
-            >
-              <Store size={17} className="text-emerald-700" />
-              <span>Consulte na loja física</span>
-            </Link>
           )}
           {venda_online_ativa && (
             <Link href="/conta" aria-label="Minha conta" className="hidden rounded-xl p-2.5 text-slate-600 transition hover:bg-emerald-50 hover:text-emerald-800 sm:inline-flex">
               <LogIn size={21} />
             </Link>
           )}
-          <div className="relative order-1 basis-[36%] md:hidden">
+          <div className="relative order-2 basis-full md:hidden">
             <button
               type="button"
-              onClick={() => setBranchMenuOpen((open) => !open)}
+              onClick={() => {
+                setSearchFocused(false);
+                setBranchMenuOpen((open) => !open);
+              }}
               aria-expanded={branchMenuOpen}
               className="flex w-full items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-left text-sm text-emerald-900"
             >
               <MapPin size={16} className="text-emerald-700" />
-              <span className="flex-1">
+              <span className="flex-1 truncate">
                 <span className="text-xs text-slate-500">Sua loja:</span>{' '}
                 <span className="font-bold">{activeBranch}</span>
               </span>
               <ChevronDown size={16} />
             </button>
             {branchMenuOpen && (
-              <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+              <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[70] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
                 {branches.map((branch) => (
-                    <button
-                      key={branch.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveBranchId(branch.id);
-                        setBranchMenuOpen(false);
-                      }}
-                      className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm hover:bg-emerald-50"
-                    >
-                      {branch.name}
-                      {activeBranch === branch.name && (
-                        <Check size={16} className="text-emerald-700" />
+                  <button
+                    key={branch.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveBranchId(branch.id);
+                      setBranchMenuOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-emerald-50"
+                  >
+                    <span className="flex items-center gap-1.5 truncate font-semibold text-slate-800">
+                      <span className="truncate">{branch.name}</span>
+                      {branch.isHeadquarters && (
+                        <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-emerald-800">
+                          Matriz
+                        </span>
                       )}
-                    </button>
-                  ))}
+                    </span>
+                    {activeBranch === branch.name && (
+                      <Check size={16} className="shrink-0 text-emerald-700" />
+                    )}
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -796,7 +815,7 @@ function ProductCard({
             className="mb-3 flex items-center justify-between gap-2 rounded-xl bg-red-600 px-3 py-2 text-white shadow-sm"
             aria-label={
               countdown
-                ? `Oferta de ${product.name} termina em ${countdown.hours} horas, ${countdown.minutes} minutos e ${countdown.seconds} segundos`
+                ? `Oferta de ${product.name} termina em ${countdown.ariaLabel}`
                 : `Cronômetro da oferta de ${product.name}`
             }
             aria-live="off"
@@ -805,8 +824,8 @@ function ProductCard({
               <Clock3 size={15} className="shrink-0 text-yellow-300" />
               <span>Termina em</span>
             </span>
-            <span className="rounded-lg bg-zinc-950/90 px-2.5 py-1 font-mono text-xs font-black tracking-widest text-white shadow-xs sm:text-sm">
-              {countdown ? countdown.formatted : '--:--:--'}
+            <span className="rounded-lg bg-zinc-950/90 px-2.5 py-1 font-mono text-xs font-black tracking-wide text-white shadow-xs sm:text-sm">
+              {countdown ? countdown.formatted : '--d --h --m'}
             </span>
           </div>
         )}
@@ -821,7 +840,7 @@ function ProductCard({
               {formatPrice(product.price)}
             </p>
           </div>
-          {venda_online_ativa ? (
+          {venda_online_ativa && (
             <button
               type="button"
               onClick={onAdd}
@@ -830,12 +849,6 @@ function ProductCard({
             >
               <Plus size={19} />
             </button>
-          ) : (
-            <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600">
-              <Store size={13} className="shrink-0 text-emerald-700" />
-              <span className="hidden sm:inline">Consulte na loja</span>
-              <span className="sm:hidden">Na loja</span>
-            </span>
           )}
         </div>
       </div>

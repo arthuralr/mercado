@@ -180,7 +180,7 @@ export default function Storefront({
                         <p className="m-0 text-lg font-bold text-emerald-400">
                           {formatPrice(product.price)}
                         </p>
-                        {venda_online_ativa ? (
+                        {venda_online_ativa && (
                           <button
                             type="button"
                             onClick={() => addToCart(product)}
@@ -188,11 +188,6 @@ export default function Storefront({
                           >
                             Adicionar
                           </button>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-300">
-                            <Store size={14} className="text-emerald-400" />
-                            Consulte na loja física
-                          </span>
                         )}
                       </div>
                     </div>

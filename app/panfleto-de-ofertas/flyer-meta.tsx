@@ -304,7 +304,7 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
               <p className="m-0 text-3xl font-black text-emerald-800">
                 {currency.format(activeSelectedProduct.price)}
               </p>
-              {venda_online_ativa ? (
+              {venda_online_ativa && (
                 <button
                   type="button"
                   onClick={() => {
@@ -316,11 +316,6 @@ export function FlyerArtwork({ products }: { products: CatalogProduct[] }) {
                   <Plus size={18} />
                   Adicionar ao carrinho
                 </button>
-              ) : (
-                <div className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-sm font-semibold text-emerald-900">
-                  <Store size={18} className="shrink-0 text-emerald-700" />
-                  <span>Consulte na loja física · Catálogo de ofertas</span>
-                </div>
               )}
             </div>
           </section>

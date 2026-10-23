@@ -524,13 +524,9 @@ export default function QuickShoppingListModal() {
         <div className="border-b border-slate-200 bg-emerald-950 px-5 py-4 text-white">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-400 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-zinc-950">
-                <Sparkles size={12} />
-                Sem necessidade de login
-              </span>
               <h2
                 id="quick-shopping-list-title"
-                className="m-0 mt-1.5 flex items-center gap-2 text-xl font-black"
+                className="m-0 flex items-center gap-2 text-xl font-black"
               >
                 <ClipboardList size={22} className="text-amber-300" />
                 Crie sua Lista de Compras

@@ -18,7 +18,7 @@ import { useShoppingCart } from './cart-provider';
 import type { CartItem } from '@/lib/catalog-types';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { useSiteSettings } from './admin-data-provider';
-import { isSafeWebUrl } from '@/lib/site-settings';
+import { getStoreWhatsappUrl, isSafeWebUrl } from '@/lib/site-settings';
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -266,7 +266,7 @@ export default function CartDrawer({
   }
 
   function createWhatsAppUrl() {
-    return `https://wa.me/${settings.channels.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(orderMessage)}`;
+    return getStoreWhatsappUrl(settings, orderMessage);
   }
 
   function handleWhatsAppOrder() {

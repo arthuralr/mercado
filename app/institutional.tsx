@@ -10,10 +10,12 @@ import {
   DEFAULT_ABOUT_TEXT,
   DEFAULT_ABOUT_TITLE,
   DEFAULT_ABOUT_VALUES,
+  getStoreUnits,
+  getStoreWhatsappUrl,
   isSafeSiteLink,
   isSafeWebUrl,
 } from '@/lib/site-settings';
-import { OfficialSocialLinks } from './social-links';
+import { OfficialSocialLinks, hasConfiguredSocialLinks } from './social-links';
 import { openPwaInstallPrompt } from './pwa-install-banner';
 
 const pageClass = 'mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8';
@@ -75,43 +77,62 @@ export function AboutPage() {
           </article>
         ))}
       </section>
-      <section className="rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="m-0 text-lg font-black text-slate-900">
-          Acompanhe {storeName} nas redes sociais
-        </h2>
-        <p className="mb-4 mt-1 text-sm text-slate-600">
-          Siga nossos canais oficiais para conferir ofertas do dia, novidades e bastidores da loja.
-        </p>
-        <OfficialSocialLinks variant="pills" />
-      </section>
+      {hasConfiguredSocialLinks(settings) && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="m-0 text-lg font-black text-slate-900">
+            Acompanhe {storeName} nas redes sociais
+          </h2>
+          <p className="mb-4 mt-1 text-sm text-slate-600">
+            Siga nossos canais oficiais para conferir ofertas do dia, novidades e bastidores da loja.
+          </p>
+          <OfficialSocialLinks variant="pills" />
+        </section>
+      )}
     </PageFrame>
   );
 }
 
 export function StoresPage() {
   const { settings } = useSiteSettings();
+  const units = getStoreUnits(settings);
   return (
-    <PageFrame title="Nossas lojas e filiais" intro="Consulte o endereço e planeje sua visita. Confirme os horários especiais antes de feriados.">
-      {settings.institution.branches.map((branch) => {
+    <PageFrame title="Nossas lojas e filiais" intro="Consulte o endereço da Loja Matriz e de nossas filiais para planejar sua visita. Confirme os horários especiais antes de feriados.">
+      {units.map((branch) => {
         const query = encodeURIComponent(branch.address);
         const phone = branch.phone || settings.institution.phone;
         const email = branch.email || settings.institution.email;
         const hours = branch.hours || settings.institution.hours;
-        return <section key={branch.id} className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="m-0 text-xl font-black">{branch.name}</h2>
-          <p className="mb-3 mt-4 flex items-start gap-2 text-sm text-slate-700"><MapPin size={18} className="mt-0.5 shrink-0 text-emerald-700" />{branch.address}</p>
-          <p className="mb-3 flex items-center gap-2 text-sm text-slate-700"><Clock3 size={18} className="text-emerald-700" />{hours}</p>
-          <p className="mb-2 flex items-center gap-2 text-sm text-slate-700"><Phone size={18} className="text-emerald-700" />{phone}</p>
-          <a href={`mailto:${email}`} className="mb-5 inline-block break-all text-sm text-slate-700 hover:underline">{email}</a>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <a href={`https://www.google.com/maps/search/?api=1&query=${query}`} target="_blank" rel="noreferrer" className="rounded-xl border border-emerald-200 px-4 py-3 text-center text-sm font-bold text-emerald-800 hover:bg-emerald-50">Abrir mapa no Google Maps</a>
-            <a href={`https://waze.com/ul?q=${query}&navigate=yes`} target="_blank" rel="noreferrer" className="rounded-xl border border-emerald-200 px-4 py-3 text-center text-sm font-bold text-emerald-800 hover:bg-emerald-50">Traçar rota no Waze</a>
-          </div>
-          <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
-            <iframe title={`Mapa ilustrativo ${branch.name}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={`https://maps.google.com/maps?q=${query}&output=embed`} className="h-72 w-full border-0" />
-          </div>
-          <p className="mb-0 mt-2 text-xs text-slate-500">Mapa ilustrativo baseado no endereço cadastrado pelo gestor. Confirme a localização antes de sair.</p>
-        </section>;
+        return (
+          <section
+            key={branch.id}
+            className={`rounded-2xl border bg-white p-6 ${
+              branch.isHeadquarters
+                ? 'border-emerald-300 ring-1 ring-emerald-500/20'
+                : 'border-slate-200'
+            }`}
+          >
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="m-0 text-xl font-black text-slate-900">{branch.name}</h2>
+              {branch.isHeadquarters && (
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-extrabold uppercase tracking-wider text-emerald-800">
+                  Loja Matriz
+                </span>
+              )}
+            </div>
+            <p className="mb-3 mt-4 flex items-start gap-2 text-sm text-slate-700"><MapPin size={18} className="mt-0.5 shrink-0 text-emerald-700" />{branch.address}</p>
+            <p className="mb-3 flex items-center gap-2 text-sm text-slate-700"><Clock3 size={18} className="text-emerald-700" />{hours}</p>
+            <p className="mb-2 flex items-center gap-2 text-sm text-slate-700"><Phone size={18} className="text-emerald-700" />{phone}</p>
+            <a href={`mailto:${email}`} className="mb-5 inline-block break-all text-sm text-slate-700 hover:underline">{email}</a>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <a href={`https://www.google.com/maps/search/?api=1&query=${query}`} target="_blank" rel="noreferrer" className="rounded-xl border border-emerald-200 px-4 py-3 text-center text-sm font-bold text-emerald-800 hover:bg-emerald-50">Abrir mapa no Google Maps</a>
+              <a href={`https://waze.com/ul?q=${query}&navigate=yes`} target="_blank" rel="noreferrer" className="rounded-xl border border-emerald-200 px-4 py-3 text-center text-sm font-bold text-emerald-800 hover:bg-emerald-50">Traçar rota no Waze</a>
+            </div>
+            <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+              <iframe title={`Mapa ilustrativo ${branch.name}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={`https://maps.google.com/maps?q=${query}&output=embed`} className="h-72 w-full border-0" />
+            </div>
+            <p className="mb-0 mt-2 text-xs text-slate-500">Mapa ilustrativo baseado no endereço cadastrado pelo gestor. Confirme a localização antes de sair.</p>
+          </section>
+        );
       })}
     </PageFrame>
   );
@@ -171,12 +192,12 @@ export function PrivacyPage() {
 export function BioPage() {
   const { settings } = useSiteSettings();
   const storeName = settings.institution.storeName.trim() || 'Supermercado';
-  const wa = `https://wa.me/${settings.channels.whatsappNumber.replace(/\D/g, '')}`;
+  const wa = getStoreWhatsappUrl(settings);
   const links = settings.bioLinks.filter((item) =>
     item.enabled &&
     item.label &&
     (item.label.toLowerCase().includes('whatsapp') && !item.url
-      ? settings.channels.whatsappNumber.replace(/\D/g, '').length >= 10
+      ? Boolean(wa)
       : isSafeSiteLink(item.url)),
   );
   return (
@@ -212,12 +233,14 @@ export function BioPage() {
               <span>Instalar o App {storeName} no telemóvel</span>
             </button>
           )}
-          <div className="pt-2">
-            <p className="mb-2.5 text-xs font-black uppercase tracking-wider text-slate-500">
-              Redes Sociais Oficiais
-            </p>
-            <OfficialSocialLinks variant="bio" />
-          </div>
+          {hasConfiguredSocialLinks(settings) && (
+            <div className="pt-2">
+              <p className="mb-2.5 text-xs font-black uppercase tracking-wider text-slate-500">
+                Redes Sociais Oficiais
+              </p>
+              <OfficialSocialLinks variant="bio" />
+            </div>
+          )}
         </nav>
         <Link href="/" className="mt-6 inline-block text-xs font-bold text-emerald-800 hover:underline">Visitar a loja online</Link>
       </section>

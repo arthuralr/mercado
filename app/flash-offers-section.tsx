@@ -175,14 +175,14 @@ export default function FlashOffersSection({
           {nearestCountdown && (
             <div
               className="flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white shadow-md ring-1 ring-zinc-800"
-              aria-label={`A oferta mais próxima termina em ${nearestCountdown.hours} horas, ${nearestCountdown.minutes} minutos e ${nearestCountdown.seconds} segundos`}
+              aria-label={`A oferta mais próxima termina em ${nearestCountdown.ariaLabel}`}
               aria-live="off"
             >
               <Clock3 size={18} className="shrink-0 text-red-400" />
               <span className="hidden text-xs font-extrabold uppercase tracking-wider text-zinc-300 sm:inline">
                 Próximo encerramento
               </span>
-              <span className="rounded-xl bg-red-600 px-3 py-1.5 font-mono text-base font-black tracking-widest text-white shadow-xs sm:text-lg">
+              <span className="rounded-xl bg-red-600 px-3 py-1.5 font-mono text-base font-black tracking-wide text-white shadow-xs sm:text-lg">
                 {nearestCountdown.formatted}
               </span>
             </div>
