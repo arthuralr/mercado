@@ -37,6 +37,7 @@ import {
   MapPin,
   Menu,
   MessageCircle,
+  Package,
   Plus,
   Search,
   ShieldCheck,
@@ -217,7 +218,7 @@ export default function HomePage({ products }: { products: Product[] }) {
 
   return (
     <main className="min-h-screen bg-[#f7f8f4] text-slate-800">
-      <header className={`sticky ${settings.topbar.enabled && settings.topbar.text ? 'top-8' : 'top-0'} z-40 border-b border-slate-200 bg-white shadow-sm`}>
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4 lg:gap-6 lg:px-8">
           <button
             type="button"
@@ -755,27 +756,46 @@ function ProductCard({
   onFavorite: () => void;
   onAdd: () => void;
 }) {
+  const [imgError, setImgError] = useState(false);
   const { venda_online_ativa } = useOnlineSales();
   const discount = product.oldPrice
     ? Math.round((1 - product.price / product.oldPrice) * 100)
     : null;
   const countdown = formatOfferCountdown(product.flashOfferEndsAt, now);
 
+  const rawImage =
+    product.image ||
+    (product as Record<string, unknown>).imagem_url ||
+    (product as Record<string, unknown>).image_url;
+  const imageUrl =
+    typeof rawImage === 'string' && rawImage.trim() ? rawImage.trim() : null;
+
   return (
     <article className="group overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
-      <div className="relative aspect-square overflow-hidden bg-slate-100">
+      <div className="relative aspect-square h-48 sm:h-52 w-full overflow-hidden bg-white flex items-center justify-center">
         <Link
           href={`/produtos/${product.id}`}
           aria-label={`Ver detalhes de ${product.name}`}
-          className="absolute inset-0"
+          className="relative flex h-full w-full items-center justify-center"
         >
-          <Image
-            src={product.image}
-            alt={product.name}
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 50vw, 25vw"
-            className="object-cover transition duration-500 group-hover:scale-105"
-          />
+          {imageUrl && !imgError ? (
+            <Image
+              src={imageUrl}
+              alt={product.name}
+              fill
+              unoptimized
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 50vw, 25vw"
+              className="h-full w-full object-contain p-2.5 transition duration-500 group-hover:scale-105"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center bg-slate-50 p-3 text-slate-400">
+              <Package size={34} className="mb-1 text-slate-300" />
+              <span className="line-clamp-1 text-center text-[10px] font-semibold text-slate-400">
+                {product.category || 'Supermercado'}
+              </span>
+            </div>
+          )}
         </Link>
         {discount && (
           <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-black text-white shadow-sm sm:left-3 sm:top-3 sm:text-xs">

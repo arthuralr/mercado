@@ -11,6 +11,7 @@ import {
   Clock3,
   MessageCircle,
   Minus,
+  Package,
   Plus,
   Heart,
   UserRound,
@@ -74,7 +75,7 @@ export function ShopHeader() {
   const whatsappUrl = getStoreWhatsappUrl(settings);
 
   return (
-    <header className={`sticky ${settings.topbar.enabled && settings.topbar.text ? 'top-8' : 'top-0'} z-40 border-b border-slate-200 bg-white shadow-sm`}>
+    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <BrandLogo />
 
@@ -199,19 +200,34 @@ export function ProductImage({
   product: CatalogProduct;
   className?: string;
 }) {
+  const [imgError, setImgError] = useState(false);
+  const rawImage =
+    product.image ||
+    (product as Record<string, unknown>).imagem_url ||
+    (product as Record<string, unknown>).image_url;
+  const imageUrl =
+    typeof rawImage === 'string' && rawImage.trim() ? rawImage.trim() : null;
+
   return (
-    <div className={`relative overflow-hidden bg-emerald-50 ${className}`}>
-      {product.image ? (
+    <div
+      className={`relative aspect-square w-full h-48 sm:h-52 overflow-hidden bg-white flex items-center justify-center ${className}`}
+    >
+      {imageUrl && !imgError ? (
         <Image
-          src={product.image}
-          alt={product.name}
+          src={imageUrl}
+          alt={product.name || 'Produto'}
           fill
-          sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 250px"
-          className="object-cover"
+          unoptimized
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 30vw, 250px"
+          className="h-full w-full object-contain p-2.5 transition duration-300 group-hover:scale-105"
+          onError={() => setImgError(true)}
         />
       ) : (
-        <div className="flex h-full min-h-24 items-center justify-center text-emerald-700">
-          <Store size={32} />
+        <div className="flex h-full w-full flex-col items-center justify-center bg-slate-50 p-3 text-slate-400">
+          <Package size={34} className="mb-1 text-slate-300" />
+          <span className="line-clamp-1 text-center text-[10px] font-semibold text-slate-400">
+            {product.category || 'Supermercado'}
+          </span>
         </div>
       )}
     </div>
@@ -252,13 +268,13 @@ export function ProductCard({
 
   return (
     <article className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md">
-      <div className="relative aspect-square">
+      <div className="relative aspect-square h-48 sm:h-52 w-full overflow-hidden bg-white">
         <Link
           href={`/produtos/${product.id}`}
           aria-label={`Ver detalhes de ${product.name}`}
-          className="absolute inset-0 block"
+          className="flex h-full w-full items-center justify-center"
         >
-          <ProductImage product={product} className="absolute inset-0" />
+          <ProductImage product={product} className="h-full w-full" />
         </Link>
         {(discount > 0 || Boolean(product.badge?.trim())) && (
           <div className="pointer-events-none absolute left-2 top-2 flex max-w-[calc(100%-3.25rem)] flex-wrap gap-1.5">

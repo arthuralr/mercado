@@ -4,6 +4,7 @@ import { CartProvider } from "./cart-provider";
 import { AdminDataProvider } from "./admin-data-provider";
 import GlobalStoreChrome from "./global-store-chrome";
 import InstitutionalFooter from "./institutional-footer";
+import VLibras from "./vlibras";
 import {
   getLocalBusinessStructuredData,
   getLocalPageMetadata,
@@ -86,6 +87,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <GlobalStoreChrome />
             {children}
             <InstitutionalFooter />
+            <VLibras />
           </CartProvider>
         </AdminDataProvider>
       </body>

@@ -471,14 +471,15 @@ export default function CartDrawer({
                   key={product.id}
                   className="flex gap-3 rounded-2xl border border-slate-100 p-3"
                 >
-                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-slate-100">
+                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-white border border-slate-100 flex items-center justify-center">
                     {product.image ? (
                       <Image
                         src={product.image}
                         alt=""
                         fill
+                        unoptimized
                         sizes="80px"
-                        className="object-cover"
+                        className="object-contain p-1"
                       />
                     ) : (
                       <span className="flex h-full items-center justify-center text-emerald-700">

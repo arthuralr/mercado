@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { ClipboardList, MessageCircle } from 'lucide-react';
 import { useSiteSettings } from './admin-data-provider';
 import { getStoreWhatsappUrl } from '@/lib/site-settings';
+import TopShortcutBar from './top-shortcut-bar';
 import PushPermissionBanner from './push-permission-banner';
 import PwaInstallBanner from './pwa-install-banner';
 import QuickShoppingListModal, {
@@ -36,10 +37,12 @@ export default function GlobalStoreChrome() {
   return (
     <>
       {settings.topbar.enabled && settings.topbar.text && (
-        <div className="sticky top-0 z-50 bg-emerald-900 px-4 py-2 text-center text-xs font-semibold text-white">
+        <div className="bg-emerald-900 px-4 py-2 text-center text-xs font-semibold text-white">
           {settings.topbar.text}
         </div>
       )}
+
+      <TopShortcutBar />
 
       <div
         aria-label="Ações rápidas de atendimento e lista de compras"

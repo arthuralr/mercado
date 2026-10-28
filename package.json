@@ -1,31 +1,42 @@
 {
   "name": "supermarket-fresh",
-  "version": "0.1.0",
-  "private": true,
+  "version": "1.0.0",
+  "description": "Template de e-commerce para supermercados feito com Next.js, Tailwind CSS, Supabase e Lucide React.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "vapid:generate": "node scripts/generate-vapid-keys.mjs"
+    "lint": "next lint"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.118.0",
-    "lucide-react": "^1.61.0",
-    "next": "16.4.2",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "web-push": "^3.6.7"
+    "@supabase/supabase-js": "^2.43.0",
+    "lucide-react": "^0.300.0",
+    "next": "14.2.0",
+    "react": "^18",
+    "react-dom": "^18"
   },
   "devDependencies": {
-    "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@types/web-push": "^3.6.4",
-    "eslint": "^9",
-    "eslint-config-next": "16.4.2",
-    "tailwindcss": "^4",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "postcss": "^8",
+    "tailwindcss": "^3.3.0",
     "typescript": "^5"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arthuralr/mercado.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/arthuralr/mercado/issues"
+  },
+  "homepage": "https://github.com/arthuralr/mercado#readme"
 }

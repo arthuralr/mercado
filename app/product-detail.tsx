@@ -28,7 +28,14 @@ export default function ProductDetail({
   const { venda_online_ativa } = useOnlineSales();
   const { addToCart } = useShoppingCart();
   const [quantity, setQuantity] = useState(1);
-  const [activeImage, setActiveImage] = useState(product.image);
+  const initialImage =
+    product.image ||
+    (product as Record<string, unknown>).imagem_url ||
+    (product as Record<string, unknown>).image_url;
+  const [activeImage, setActiveImage] = useState<string | null>(
+    typeof initialImage === 'string' && initialImage.trim() ? initialImage.trim() : null,
+  );
+  const [imgError, setImgError] = useState(false);
 
   function addSelectedQuantity() {
     addToCart({ ...product, image: activeImage }, quantity);
@@ -43,18 +50,20 @@ export default function ProductDetail({
     <div>
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
         <div>
-          <div className="relative aspect-square overflow-hidden rounded-3xl bg-white shadow-sm">
-            {activeImage ? (
+          <div className="relative aspect-square overflow-hidden rounded-3xl bg-white shadow-sm flex items-center justify-center">
+            {activeImage && !imgError ? (
               <Image
                 src={activeImage}
                 alt={product.name}
                 fill
                 priority
+                unoptimized
                 sizes="(max-width: 1024px) 100vw, 50vw"
-                className="object-cover"
+                className="h-full w-full object-contain p-4 sm:p-8 transition duration-300"
+                onError={() => setImgError(true)}
               />
             ) : (
-              <ProductImage product={product} className="absolute inset-0" />
+              <ProductImage product={product} className="h-full w-full" />
             )}
             {discount && (
               <span className="absolute left-4 top-4 rounded-full bg-red-600 px-4 py-2 text-sm font-black text-white shadow-sm">
