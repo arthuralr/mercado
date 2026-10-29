@@ -351,11 +351,16 @@ export async function uploadProductImage(file: File): Promise<string> {
   if (!data?.path) {
     throw new Error('O Supabase Storage não retornou o caminho do arquivo.');
   }
-  const publicUrl = supabaseBrowser.storage
+  const { data: publicUrlResponse, error: publicUrlError } =
+    await supabaseBrowser.storage
     .from('encartes')
-    .getPublicUrl(data.path).data.publicUrl;
+    .getPublicUrl(data.path);
+  if (publicUrlError) {
+    throw new Error(`Não foi possível obter o endereço público da imagem: ${publicUrlError.message}`);
+  }
+  const publicUrl = publicUrlResponse?.publicUrl;
   if (!publicUrl) {
-    throw new Error('Não foi possível obter o endereço público da imagem.');
+    throw new Error('O Supabase Storage não retornou o endereço público do arquivo.');
   }
   return publicUrl;
 }
